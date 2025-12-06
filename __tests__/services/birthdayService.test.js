@@ -99,7 +99,9 @@ describe('BirthdayService', () => {
                 toDate: jest.fn().mockReturnValue(new Date('2025-10-08T08:00:00Z'))
             })
         };
-        parser.parseExpression = jest.fn().mockReturnValue(mockParserInterval);
+        parser.CronExpressionParser = {
+            parse: jest.fn().mockReturnValue(mockParserInterval)
+        };
 
         // Setup interval mock
         mockInterval = {};
@@ -561,12 +563,12 @@ describe('BirthdayService', () => {
         test('should log next execution time for valid cron schedule', () => {
             BirthdayService.logNextExecution('0 8 * * *', 'Europe/Berlin');
 
-            expect(parser.parseExpression).toHaveBeenCalledWith('0 8 * * *', { tz: 'Europe/Berlin' });
+            expect(parser.CronExpressionParser.parse).toHaveBeenCalledWith('0 8 * * *', { tz: 'Europe/Berlin' });
             expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Birthday checker scheduled. Next check:'));
         });
 
         test('should log error when parser fails', () => {
-            parser.parseExpression.mockImplementation(() => {
+            parser.CronExpressionParser.parse.mockImplementation(() => {
                 throw new Error('Parser error');
             });
 

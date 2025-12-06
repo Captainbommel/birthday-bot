@@ -20,7 +20,7 @@ class BirthdayService {
 
     startBirthdayChecker() {
         // Check immediately on startup
-        // this.checkForBirthdays();
+        this.checkForBirthdays();
         
         // Start the cron job with current config
         this.updateCronSchedule();
@@ -90,7 +90,7 @@ class BirthdayService {
 
     logNextExecution(cronSchedule, timezone) {
         try {
-            const interval = parser.parseExpression(cronSchedule, { tz: timezone });
+            const interval = parser.CronExpressionParser.parse(cronSchedule, { tz: timezone });
             const nextRun = interval.next().toDate();
             const nextRunFormatted = moment(nextRun).tz(timezone).format('dddd, MMMM Do YYYY, h:mm A');
             logger.info(`Birthday checker scheduled. Next check: ${nextRunFormatted} (${timezone})`);
