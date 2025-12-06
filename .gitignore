@@ -104,6 +104,7 @@ Desktop.ini
 
 # Personal data files
 birthdays.json
+history.json
 config.json
 minions/*
 *.tar.gz

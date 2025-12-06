@@ -11,6 +11,12 @@ jest.mock('../../src/utils/logger', () => require('../__mocks__/logger'));
 jest.mock('../../src/config/configManager', () => require('../__mocks__/configManager'));
 jest.mock('../../src/services/whatsappService', () => require('../__mocks__/whatsappService'));
 jest.mock('../../src/services/aiMessageService', () => require('../__mocks__/aiMessageService'));
+jest.mock('../../src/services/historyService', () => ({
+    hasSentMessage: jest.fn().mockReturnValue(false),
+    markAsSent: jest.fn(),
+    loadHistory: jest.fn(),
+    saveHistory: jest.fn()
+}));
 
 const cron = require('node-cron');
 const parser = require('cron-parser');
@@ -19,6 +25,7 @@ const logger = require('../../src/utils/logger');
 const configManager = require('../../src/config/configManager');
 const whatsappService = require('../../src/services/whatsappService');
 const aiMessageService = require('../../src/services/aiMessageService');
+const historyService = require('../../src/services/historyService');
 
 // Import the service after mocking dependencies
 const BirthdayService = require('../../src/services/birthdayService');
@@ -35,6 +42,9 @@ describe('BirthdayService', () => {
         configManager.resetMocks();
         whatsappService.resetMocks();
         aiMessageService.resetMocks();
+        
+        // Reset historyService mock implementation
+        historyService.hasSentMessage.mockReturnValue(false);
 
         // Reset service state
         BirthdayService.stopBirthdayChecker();
@@ -44,6 +54,7 @@ describe('BirthdayService', () => {
             tz: jest.fn().mockReturnThis(),
             date: jest.fn().mockReturnValue(7),
             month: jest.fn().mockReturnValue(9), // October (0-based)
+            year: jest.fn().mockReturnValue(2025),
             format: jest.fn((format) => {
                 if (format === 'DD-MM') return '07-10';
                 if (format === 'YYYY-MM-DD') return '2025-10-07';
@@ -249,6 +260,24 @@ describe('BirthdayService', () => {
             expect(logger.info).toHaveBeenCalledWith('Found birthday: John Doe');
             expect(aiMessageService.generateBirthdayMessage).toHaveBeenCalledWith('John Doe');
             expect(whatsappService.sendMessage).toHaveBeenCalledWith('+1111111111', expect.any(String));
+            expect(historyService.markAsSent).toHaveBeenCalledWith('John Doe', 2025, 'birthday_message');
+        });
+
+        test('should skip if message already sent for this year', async () => {
+            const birthdayPerson = {
+                name: 'John Doe',
+                date: '07-10',
+                phone: '+1111111111',
+                personal: false
+            };
+            configManager.setMockBirthdays([birthdayPerson]);
+            historyService.hasSentMessage.mockReturnValue(true);
+            
+            await BirthdayService.checkForBirthdays();
+
+            expect(logger.info).toHaveBeenCalledWith('Already sent birthday message to John Doe for year 2025. Skipping.');
+            expect(aiMessageService.generateBirthdayMessage).not.toHaveBeenCalled();
+            expect(whatsappService.sendMessage).not.toHaveBeenCalled();
         });
 
         test('should handle personal birthdays correctly', async () => {
@@ -264,6 +293,7 @@ describe('BirthdayService', () => {
 
             expect(aiMessageService.generatePersonalReminderMessage).toHaveBeenCalledWith('Jane Smith');
             expect(whatsappService.sendMessage).toHaveBeenCalledWith('+1234567890', expect.any(String));
+            expect(historyService.markAsSent).toHaveBeenCalledWith('Jane Smith', 2025, 'personal_reminder');
         });
 
         test('should skip birthdays not matching today', async () => {
@@ -343,8 +373,9 @@ describe('BirthdayService', () => {
 
         test('should handle personal birthday correctly', async () => {
             const person = { name: 'Jane', personal: true };
+            const year = 2025;
             
-            await BirthdayService.handleBirthday(person, mockConfig);
+            await BirthdayService.handleBirthday(person, mockConfig, year);
 
             expect(aiMessageService.generatePersonalReminderMessage).toHaveBeenCalledWith('Jane');
             expect(whatsappService.sendMessage).toHaveBeenCalledWith(
@@ -352,12 +383,14 @@ describe('BirthdayService', () => {
                 "Reminder: It's Jane's birthday today! Don't forget to wish them well."
             );
             expect(logger.info).toHaveBeenCalledWith('Sent personal reminder for Jane to you');
+            expect(historyService.markAsSent).toHaveBeenCalledWith('Jane', 2025, 'personal_reminder');
         });
 
         test('should handle regular birthday correctly', async () => {
             const person = { name: 'John', phone: '+1111111111', personal: false };
+            const year = 2025;
             
-            await BirthdayService.handleBirthday(person, mockConfig);
+            await BirthdayService.handleBirthday(person, mockConfig, year);
 
             expect(aiMessageService.generateBirthdayMessage).toHaveBeenCalledWith('John');
             expect(whatsappService.sendMessage).toHaveBeenCalledWith(
@@ -365,15 +398,17 @@ describe('BirthdayService', () => {
                 'Happy Birthday John! 🎉 Wishing you all the best on your special day!'
             );
             expect(logger.info).toHaveBeenCalledWith('Sent AI birthday message to John at +1111111111');
+            expect(historyService.markAsSent).toHaveBeenCalledWith('John', 2025, 'birthday_message');
         });
 
         test('should send minion image when available', async () => {
             const person = { name: 'Minion Fan', phone: '+12345', personal: false };
+            const year = 2025;
             
             fs.existsSync.mockReturnValue(true);
             fs.readdirSync.mockReturnValue(['minion1.jpg', 'minion2.png', 'not-image.txt']);
             
-            await BirthdayService.handleBirthday(person, mockConfig);
+            await BirthdayService.handleBirthday(person, mockConfig, year);
             
             expect(whatsappService.sendImage).toHaveBeenCalledWith(
                 '+12345',
@@ -384,11 +419,12 @@ describe('BirthdayService', () => {
 
         test('should warn when minions folder is empty', async () => {
             const person = { name: 'No Minion Fan', phone: '+12345', personal: false };
+            const year = 2025;
             
             fs.existsSync.mockReturnValue(true);
             fs.readdirSync.mockReturnValue(['not-image.txt']);
             
-            await BirthdayService.handleBirthday(person, mockConfig);
+            await BirthdayService.handleBirthday(person, mockConfig, year);
             
             expect(whatsappService.sendImage).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledWith('No images found in minions folder');
@@ -396,10 +432,11 @@ describe('BirthdayService', () => {
 
         test('should warn when minions folder does not exist', async () => {
             const person = { name: 'No Folder Fan', phone: '+12345', personal: false };
+            const year = 2025;
             
             fs.existsSync.mockReturnValue(false);
             
-            await BirthdayService.handleBirthday(person, mockConfig);
+            await BirthdayService.handleBirthday(person, mockConfig, year);
             
             expect(whatsappService.sendImage).not.toHaveBeenCalled();
             expect(logger.warn).toHaveBeenCalledWith('Minions folder not found');

@@ -7,6 +7,7 @@ const logger = require('../utils/logger');
 const configManager = require('../config/configManager');
 const whatsappService = require('./whatsappService');
 const aiMessageService = require('./aiMessageService');
+const historyService = require('./historyService');
 
 const DEFAULT_CRON_SCHEDULE = '0 8 * * *';
 
@@ -105,6 +106,7 @@ class BirthdayService {
         // Use the configured timezone instead of server timezone
         const today = moment().tz(timezone);
         const todayKey = `${today.date().toString().padStart(2, '0')}-${(today.month() + 1).toString().padStart(2, '0')}`;
+        const currentYear = today.year();
         
         logger.info(`Checking for birthdays on ${todayKey} (${timezone})...`);
         
@@ -113,10 +115,15 @@ class BirthdayService {
         // Check each person to see if it's their birthday
         for (const person of birthdays) {
             if (person.date === todayKey) {
+                if (historyService.hasSentMessage(person.name, currentYear)) {
+                    logger.info(`Already sent birthday message to ${person.name} for year ${currentYear}. Skipping.`);
+                    continue;
+                }
+
                 logger.info(`Found birthday: ${person.name}`);
                 
                 try {
-                    await this.handleBirthday(person, config);
+                    await this.handleBirthday(person, config, currentYear);
                 } catch (error) {
                     logger.error(`Error handling birthday for ${person.name}`, error);
                     logger.info(`Make sure ${person.name}'s number (${person.phone || 'not provided'}) is saved in your WhatsApp contacts`);
@@ -125,13 +132,14 @@ class BirthdayService {
         }
     }
 
-    async handleBirthday(person, config) {
+    async handleBirthday(person, config, year) {
         if (person.personal) {
             // Send personal notification to you for manual handling
             if (config.yourPhoneNumber) {
                 const reminderMessage = await aiMessageService.generatePersonalReminderMessage(person.name);
                 await whatsappService.sendMessage(config.yourPhoneNumber, reminderMessage);
                 logger.info(`Sent personal reminder for ${person.name} to you`);
+                historyService.markAsSent(person.name, year, 'personal_reminder');
             } else {
                 logger.warn(`Personal birthday for ${person.name} but yourPhoneNumber not configured`);
             }
@@ -167,6 +175,7 @@ class BirthdayService {
 
                 await whatsappService.sendMessage(person.phone, aiMessage);
                 logger.info(`Sent AI birthday message to ${person.name} at ${person.phone}`);
+                historyService.markAsSent(person.name, year, 'birthday_message');
             } else {
                 logger.warn(`No phone number for ${person.name}, cannot send message`);
             }

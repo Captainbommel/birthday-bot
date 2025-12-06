@@ -5,9 +5,12 @@ const whatsappService = {
     isReady: jest.fn(() => true),
     // Helper methods for tests
     resetMocks: () => {
-        whatsappService.sendMessage.mockClear();
-        whatsappService.sendImage.mockClear();
-        whatsappService.isReady.mockClear();
+        whatsappService.sendMessage.mockReset();
+        whatsappService.sendMessage.mockResolvedValue('Message sent successfully');
+        whatsappService.sendImage.mockReset();
+        whatsappService.sendImage.mockResolvedValue('Image sent successfully');
+        whatsappService.isReady.mockReset();
+        whatsappService.isReady.mockReturnValue(true);
     },
     simulateError: () => {
         whatsappService.sendMessage.mockRejectedValueOnce(new Error('WhatsApp service error'));
