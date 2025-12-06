@@ -21,7 +21,14 @@ class ConfigManager {
         if (fs.existsSync(this.CONFIG_FILE)) {
             try {
                 const loadedConfig = JSON.parse(fs.readFileSync(this.CONFIG_FILE, 'utf8'));
-                return { ...defaultConfig, ...loadedConfig };
+                const config = { ...defaultConfig, ...loadedConfig };
+
+                // Strip spaces from phone number
+                if (config.yourPhoneNumber) {
+                    config.yourPhoneNumber = config.yourPhoneNumber.replace(/\s+/g, '');
+                }
+
+                return config;
             } catch (error) {
                 logger.error('Error loading config file', error);
                 return defaultConfig;
@@ -36,7 +43,13 @@ class ConfigManager {
         if (fs.existsSync(this.BIRTHDAYS_FILE)) {
             try {
                 const birthdays = JSON.parse(fs.readFileSync(this.BIRTHDAYS_FILE, 'utf8'));
-                return birthdays;
+                // Strip spaces from phone numbers
+                return birthdays.map(birthday => {
+                    if (birthday.phone) {
+                        birthday.phone = birthday.phone.replace(/\s+/g, '');
+                    }
+                    return birthday;
+                });
             } catch (error) {
                 logger.error('Error loading birthdays file', error);
                 return [];

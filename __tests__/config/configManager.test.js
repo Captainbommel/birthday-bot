@@ -91,6 +91,19 @@ describe('ConfigManager', () => {
             expect(logger.error).toHaveBeenCalledWith('Error loading config file', readError);
             expect(result).toEqual(defaultConfig);
         });
+
+        test('should strip spaces from yourPhoneNumber', () => {
+            const fileConfig = {
+                yourPhoneNumber: "+1 234 567 890"
+            };
+            
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(fileConfig));
+
+            const result = configManager.loadConfig();
+
+            expect(result.yourPhoneNumber).toBe("+1234567890");
+        });
     });
 
     describe('loadBirthdays', () => {
@@ -141,6 +154,34 @@ describe('ConfigManager', () => {
 
             expect(logger.error).toHaveBeenCalledWith('Error loading birthdays file', readError);
             expect(result).toEqual([]);
+        });
+
+        test('should strip spaces from phone numbers in birthdays', () => {
+            const birthdays = [
+                { name: "Test", phone: "+1 234 567 890" },
+                { name: "Test2", phone: "+9 876 543 210" }
+            ];
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(birthdays));
+
+            const result = configManager.loadBirthdays();
+
+            expect(result[0].phone).toBe("+1234567890");
+            expect(result[1].phone).toBe("+9876543210");
+        });
+
+        test('should handle birthdays without phone numbers', () => {
+            const birthdays = [
+                { name: "Test" }
+            ];
+
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify(birthdays));
+
+            const result = configManager.loadBirthdays();
+
+            expect(result[0].phone).toBeUndefined();
         });
     });
 
