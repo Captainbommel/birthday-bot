@@ -9,6 +9,7 @@ Simple bot that automatically sends birthday messages to your "special" friends.
 - Personal reminders for special people
 
 ## ROADMAP
-- commands over personal chat
+- more commands over personal chat
 - semi-automatic qr-code updates
+- add tests for commandService
 - finnish readme

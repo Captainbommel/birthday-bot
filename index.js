@@ -11,10 +11,12 @@ const logger = require('./src/utils/logger');
 const configManager = require('./src/config/configManager');
 const whatsappService = require('./src/services/whatsappService');
 const birthdayService = require('./src/services/birthdayService');
+const CommandService = require('./src/services/commandService');
 
 class BirthdayBot {
     constructor() {
         this.isRunning = false;
+        this.commandService = null;
     }
 
     async start() {
@@ -42,10 +44,16 @@ class BirthdayBot {
     }
 
     waitForWhatsAppReady() {
-        const checkReady = () => {
+        const checkReady = async () => {
             if (whatsappService.isReady) {
                 // Start the birthday checking service
                 birthdayService.startBirthdayChecker();
+                // Start the command service polling for personal chat commands
+                if (!this.commandService) {
+                    this.commandService = new CommandService(whatsappService);
+                    const personalChatId = configManager.getConfig().yourPhoneNumber;
+                    this.commandService.startPolling(personalChatId);
+                }
             } else {
                 // Check again in 1 second
                 setTimeout(checkReady, 1000);

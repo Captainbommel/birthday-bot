@@ -115,7 +115,7 @@ class WhatsAppService {
     async getSafeChatById(phoneNumber, maxRetries = 3) {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                logger.info(`Attempting to get chat for ${phoneNumber} (attempt ${attempt}/${maxRetries})`);
+                // logger.info(`Attempting to get chat for ${phoneNumber} (attempt ${attempt}/${maxRetries})`);
                 
                 // Try different format variations
                 const formats = [
@@ -126,7 +126,7 @@ class WhatsAppService {
                 for (const format of formats) {
                     try {
                         const chat = await this.client.getChatById(format);
-                        logger.info(`Successfully got chat with format: ${format}`);
+                        // logger.info(`Successfully got chat with format: ${format}`);
                         return chat;
                     } catch (formatError) {
                         logger.info(`Format ${format} failed: ${formatError.message}`);
@@ -180,6 +180,18 @@ class WhatsAppService {
             logger.error(`Failed to send image to ${phoneNumber}`, error);
             throw error;
         }
+    }
+
+    // Returns the latest message from a chat by phone number
+    async getLatestMessage(phoneNumber) {
+        if (!this.isReady) throw new Error('WhatsApp client is not ready');
+        const chat = await this.getSafeChatById(phoneNumber);
+        const messages = await chat.fetchMessages({ limit: 1 });
+        if (messages && messages.length > 0) {
+            const msg = messages[0];
+            return { id: msg.id._serialized, text: msg.body };
+        }
+        return null;
     }
 
     async sendTestMessage() {
