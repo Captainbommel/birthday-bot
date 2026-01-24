@@ -63,7 +63,7 @@ class BirthdayBot {
                 birthdayService.startBirthdayChecker();
                 // Start the command service polling for personal chat commands
                 if (!this.commandService) {
-                    this.commandService = new CommandService(whatsappService);
+                    this.commandService = new CommandService(whatsappService, birthdayService);
                     const personalChatId = configManager.getConfig().yourPhoneNumber;
                     this.commandService.startPolling(personalChatId);
                 }
