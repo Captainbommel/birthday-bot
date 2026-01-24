@@ -260,7 +260,7 @@ describe('BirthdayService', () => {
 
             expect(logger.info).toHaveBeenCalledWith('Checking for birthdays on 07-10 (Europe/Berlin)...');
             expect(logger.info).toHaveBeenCalledWith('Found birthday: John Doe');
-            expect(aiMessageService.generateBirthdayMessage).toHaveBeenCalledWith('John Doe');
+            expect(aiMessageService.generateBirthdayMessage).toHaveBeenCalledWith('John Doe', 'generated');
             expect(whatsappService.sendMessage).toHaveBeenCalledWith('+1111111111', expect.any(String));
             expect(historyService.markAsSent).toHaveBeenCalledWith('John Doe', 2025, 'birthday_message');
         });
@@ -394,7 +394,7 @@ describe('BirthdayService', () => {
             
             await BirthdayService.handleBirthday(person, mockConfig, year);
 
-            expect(aiMessageService.generateBirthdayMessage).toHaveBeenCalledWith('John');
+            expect(aiMessageService.generateBirthdayMessage).toHaveBeenCalledWith('John', 'generated');
             expect(whatsappService.sendMessage).toHaveBeenCalledWith(
                 '+1111111111',
                 'Happy Birthday John! 🎉 Wishing you all the best on your special day!'

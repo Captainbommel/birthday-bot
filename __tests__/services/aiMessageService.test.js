@@ -144,8 +144,8 @@ describe('AIMessageService', () => {
                 
                 expect(systemMessage).toContain('frecher und humorvoller');
                 expect(systemMessage).toContain('Alterswitze');
-                expect(userMessage).toContain('Fossil');
-                expect(userMessage).toContain('Rentner');
+                expect(userMessage).toContain('Alter lustig macht');
+                expect(userMessage).toContain('Sarkasmus');
             });
 
             test('should default to generated type when invalid type provided', async () => {
@@ -174,7 +174,7 @@ describe('AIMessageService', () => {
                 
                 expect(systemMessage).toContain('auf Deutsch');
                 expect(systemMessage).toContain('witziger und lustiger');
-                expect(systemMessage).toContain('niemals gemein oder verletzend');
+                expect(systemMessage).toContain('niemals zu gemein oder verletzend');
             });
 
             test('should handle OpenAI API errors gracefully', async () => {
