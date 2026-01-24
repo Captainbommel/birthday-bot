@@ -8,6 +8,52 @@ Simple bot that automatically sends birthday messages to your "special" friends.
 - AI-generated funny birthday messages via OpenAI
 - Personal reminders for special people
 
+## Troubleshooting
+
+### WhatsApp Web "markedUnread" Error
+
+If you encounter the error `TypeError: Cannot read properties of undefined (reading 'markedUnread')`, this is caused by WhatsApp Web API changes. Apply this fix to `node_modules\whatsapp-web.js\src\util\Injected\Utils.js`:
+
+Replace the `window.WWebJS.sendSeen` function with:
+
+```javascript
+window.WWebJS.sendSeen = async (chatId) => {
+    const chat = await window.WWebJS.getChat(chatId, { getAsModel: false });
+    if (!chat) return false;
+
+    const isChannel = window.Store.ChatGetters.getIsNewsletter(chat);
+    const isStatus = window.Store.ChatGetters.getIsBroadcast(chat);
+
+    const canUseSendSeen = typeof chat.markedUnread !== 'undefined';
+
+    try {
+        window.Store.WAWebStreamModel.Stream.markAvailable();
+
+        if (canUseSendSeen && window.Store.SendSeen.sendSeen && !isChannel && !isStatus) {
+            await window.Store.SendSeen.sendSeen(chat);
+        } else if (window.Store.SendSeen.markSeen) {
+            await window.Store.SendSeen.markSeen(chat);
+        } else {
+            return false;
+        }
+
+        return true;
+    } catch (err) {
+        try {
+            if (window.Store.SendSeen.markSeen) {
+                await window.Store.SendSeen.markSeen(chat);
+                return true;
+            }
+        } catch (_) {}
+        return false;
+    } finally {
+        window.Store.WAWebStreamModel.Stream.markUnavailable();
+    }
+};
+```
+
+This fix adds proper checks for channels, status broadcasts, and fallback mechanisms to prevent crashes.
+
 ## ROADMAP
 - more commands over personal chat
 - semi-automatic qr-code updates
