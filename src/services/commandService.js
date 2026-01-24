@@ -49,7 +49,7 @@ class CommandService {
                 }
 
                 if (!name || !date) {
-                    await this.whatsappService.sendMessage(chatId, 'Usage: $:addBirthday --n Name -d DD-MM -ph +49123456789 [-t personal|generated]');
+                    await this.whatsappService.sendMessage(chatId, 'Usage: $:addBirthday --n Name -d DD-MM -ph +49123456789 [-t personal|generated|generated_age]');
                     return;
                 }
 

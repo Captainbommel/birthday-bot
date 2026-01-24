@@ -107,13 +107,59 @@ describe('AIMessageService', () => {
 
                 expect(AIMessageService.openai.chat.completions.create).toHaveBeenCalledWith({
                     model: "gpt-3.5-turbo",
-                    max_tokens: 100,
+                    max_tokens: 150,
                     temperature: 0.9,
                     messages: expect.arrayContaining([
                         expect.objectContaining({ role: 'system' }),
                         expect.objectContaining({ role: 'user' })
                     ])
                 });
+            });
+
+            test('should generate age-focused message with generated_age type', async () => {
+                const testName = 'OldTimer';
+                const ageRoastResponse = 'Herzlichen Glückwunsch zum Fossil-Status! Du bist jetzt offiziell älter als die meisten Saurier.';
+                
+                AIMessageService.openai.chat.completions.create.mockResolvedValueOnce({
+                    choices: [{ message: { content: ageRoastResponse } }]
+                });
+
+                const result = await AIMessageService.generateBirthdayMessage(testName, 'generated_age');
+
+                expect(result).toContain(`🎉 Alles Gute zum Geburtstag, ${testName}! 🎂`);
+                expect(result).toContain(ageRoastResponse);
+                expect(logger.info).toHaveBeenCalledWith(`Generated AI message (generated_age) for ${testName}`);
+            });
+
+            test('should use age-specific prompt for generated_age type', async () => {
+                AIMessageService.openai.chat.completions.create.mockResolvedValueOnce({
+                    choices: [{ message: { content: 'Test response' } }]
+                });
+
+                await AIMessageService.generateBirthdayMessage('Hans', 'generated_age');
+
+                const callArgs = AIMessageService.openai.chat.completions.create.mock.calls[0][0];
+                const systemMessage = callArgs.messages[0].content;
+                const userMessage = callArgs.messages[1].content;
+                
+                expect(systemMessage).toContain('frecher und humorvoller');
+                expect(systemMessage).toContain('Alterswitze');
+                expect(userMessage).toContain('Fossil');
+                expect(userMessage).toContain('Rentner');
+            });
+
+            test('should default to generated type when invalid type provided', async () => {
+                AIMessageService.openai.chat.completions.create.mockResolvedValueOnce({
+                    choices: [{ message: { content: 'Default response' } }]
+                });
+
+                await AIMessageService.generateBirthdayMessage('Test', 'invalid_type');
+
+                const callArgs = AIMessageService.openai.chat.completions.create.mock.calls[0][0];
+                const systemMessage = callArgs.messages[0].content;
+                
+                // Should use the default 'generated' prompt
+                expect(systemMessage).toContain('witziger und lustiger');
             });
 
             test('should use German system prompt', async () => {

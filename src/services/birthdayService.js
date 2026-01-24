@@ -145,7 +145,8 @@ class BirthdayService {
             }
         } else {
             // Generate AI message and send automatically
-            const aiMessage = await aiMessageService.generateBirthdayMessage(person.name);
+            const messageType = person.type || 'generated';
+            const aiMessage = await aiMessageService.generateBirthdayMessage(person.name, messageType);
             
             if (person.phone) {
                 // Send Minion Image

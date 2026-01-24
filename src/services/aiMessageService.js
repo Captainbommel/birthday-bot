@@ -21,7 +21,22 @@ class AIMessageService {
         }
     }
 
-    async generateBirthdayMessage(name) {
+    getPromptForType(type) {
+        const prompts = {
+            'generated': {
+                system: "Du bist ein witziger und lustiger Geburtstags-Nachrichtengenerator. Erstelle kurze, lustige und persönliche Geburtstagsnachrichten auf Deutsch. Halte sie fröhlich und amüsant. Die Nachricht sollte maximal 1-2 Sätze lang sein. Füge NICHT den Namen der Person in die Nachricht ein - das wird separat hinzugefügt. Schreibe ausschließlich auf Deutsch. Die Nachricht soll die Person auf eine lustige, freundliche Weise necken oder leicht beleidigen, aber niemals zu gemein oder verletzend sein.",
+                user: "Generiere eine lustige, freundliche Geburtstagsnachricht auf Deutsch, die die Person auf witzige Weise neckt."
+            },
+            'generated_age': {
+                system: "Du bist ein frecher und humorvoller Geburtstags-Nachrichtengenerator, der sich auf Alterswitze spezialisiert hat. Deine Aufgabe ist es, kurze und humorvolle, freche und etwas derbe Geburtstagsgrüße zu erstellen, die sich über das Alter lustig machen.",
+                user: "Gib mir einen humorvollen, frechen, etwas derben Geburtstagsgruß, der einen guten Freund aufs Korn nimmt und sich gerne über sein Alter lustig macht. Es soll dabei richtig auf die Kacke gehauen werden, mit einer guten Portion Sarkasmus und etwas Übertreibung. Der Spruch darf ruhig schockieren, aber nicht zu böse sein. Halte die Nachricht auf 2-3 Sätze. Füge NICHT den Namen der Person in die Nachricht ein - das wird separat hinzugefügt. Schreibe ausschließlich auf Deutsch."
+            }
+        };
+
+        return prompts[type] || prompts['generated'];
+    }
+
+    async generateBirthdayMessage(name, type = 'generated') {
         const config = configManager.getConfig();
         const signature = `_gesendet von ${config.botOwner || 'John'} total persönlichem Geburtstags Bot_`;
 
@@ -31,26 +46,28 @@ class AIMessageService {
         }
 
         try {
+            const prompt = this.getPromptForType(type);
+            
             const response = await this.openai.chat.completions.create({
                 model: "gpt-3.5-turbo",
                 messages: [
                     {
                         role: "system",
-                        content: "Du bist ein witziger und lustiger Geburtstags-Nachrichtengenerator. Erstelle kurze, lustige und persönliche Geburtstagsnachrichten auf Deutsch. Halte sie fröhlich und amüsant. Die Nachricht sollte maximal 1-2 Sätze lang sein. Füge NICHT den Namen der Person in die Nachricht ein - das wird separat hinzugefügt. Schreibe ausschließlich auf Deutsch. Die Nachricht soll die Person auf eine lustige, freundliche Weise necken oder leicht beleidigen, aber niemals gemein oder verletzend sein."
+                        content: prompt.system
                     },
                     {
                         role: "user",
-                        content: "Generiere eine lustige, freundliche Geburtstagsnachricht auf Deutsch, die die Person auf witzige Weise neckt."
+                        content: prompt.user
                     }
                 ],
-                max_tokens: 100,
+                max_tokens: 150,
                 temperature: 0.9,
             });
 
             const aiMessage = response.choices[0].message.content.trim();
             const fullMessage = `🎉 Alles Gute zum Geburtstag, ${name}! 🎂\n\n${aiMessage}\n\n ${signature}`;
             
-            logger.info(`Generated AI message for ${name}`);
+            logger.info(`Generated AI message (${type}) for ${name}`);
             return fullMessage;
         } catch (error) {
             logger.error('Error generating AI message', error);
