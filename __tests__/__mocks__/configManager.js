@@ -11,19 +11,19 @@ const mockBirthdays = [
         name: 'John Doe',
         date: '07-10', // Today's date for testing
         phone: '+1111111111',
-        personal: false
+        type: 'generated'
     },
     {
         name: 'Jane Smith',
         date: '08-10', // Tomorrow's date
         phone: '+2222222222',
-        personal: true
+        type: 'personal'
     },
     {
         name: 'Bob Wilson',
         date: '06-10', // Yesterday's date
         phone: '+3333333333',
-        personal: false
+        type: 'generated'
     }
 ];
 

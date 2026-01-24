@@ -250,7 +250,7 @@ describe('BirthdayService', () => {
                 name: 'John Doe',
                 date: '07-10',
                 phone: '+1111111111',
-                personal: false
+                type: 'generated'
             };
             configManager.setMockBirthdays([birthdayPerson]);
             // Ensure the config has the correct timezone
@@ -270,7 +270,7 @@ describe('BirthdayService', () => {
                 name: 'John Doe',
                 date: '07-10',
                 phone: '+1111111111',
-                personal: false
+                type: 'generated'
             };
             configManager.setMockBirthdays([birthdayPerson]);
             historyService.hasSentMessage.mockReturnValue(true);
@@ -287,7 +287,7 @@ describe('BirthdayService', () => {
                 name: 'Jane Smith',
                 date: '07-10',
                 phone: '+2222222222',
-                personal: true
+                type: 'personal'
             };
             configManager.setMockBirthdays([personalBirthday]);
 
@@ -303,7 +303,7 @@ describe('BirthdayService', () => {
                 name: 'Tomorrow Person',
                 date: '08-10',
                 phone: '+3333333333',
-                personal: false
+                type: 'generated'
             };
             configManager.setMockBirthdays([tomorrowBirthday]);
 
@@ -319,7 +319,7 @@ describe('BirthdayService', () => {
                 name: 'Error Person',
                 date: '07-10',
                 phone: '+4444444444',
-                personal: false
+                type: 'generated'
             };
             configManager.setMockBirthdays([birthdayPerson]);
             whatsappService.simulateError();
@@ -340,7 +340,7 @@ describe('BirthdayService', () => {
                 name: 'Personal No Phone',
                 date: '07-10',
                 phone: '+5555555555',
-                personal: true
+                type: 'personal'
             };
             configManager.setMockBirthdays([personalBirthday]);
             configManager.setMockConfig({ yourPhoneNumber: '' });
@@ -356,7 +356,7 @@ describe('BirthdayService', () => {
             const noPhonePerson = {
                 name: 'No Phone Person',
                 date: '07-10',
-                personal: false
+                type: 'generated'
             };
             configManager.setMockBirthdays([noPhonePerson]);
 
@@ -374,7 +374,7 @@ describe('BirthdayService', () => {
         };
 
         test('should handle personal birthday correctly', async () => {
-            const person = { name: 'Jane', personal: true };
+            const person = { name: 'Jane', type: 'personal' };
             const year = 2025;
             
             await BirthdayService.handleBirthday(person, mockConfig, year);
@@ -389,7 +389,7 @@ describe('BirthdayService', () => {
         });
 
         test('should handle regular birthday correctly', async () => {
-            const person = { name: 'John', phone: '+1111111111', personal: false };
+            const person = { name: 'John', phone: '+1111111111', type: 'generated' };
             const year = 2025;
             
             await BirthdayService.handleBirthday(person, mockConfig, year);
@@ -404,7 +404,7 @@ describe('BirthdayService', () => {
         });
 
         test('should send minion image when available', async () => {
-            const person = { name: 'Minion Fan', phone: '+12345', personal: false };
+            const person = { name: 'Minion Fan', phone: '+12345', type: 'generated' };
             const year = 2025;
             
             fs.existsSync.mockReturnValue(true);
@@ -420,7 +420,7 @@ describe('BirthdayService', () => {
         });
 
         test('should warn when minions folder is empty', async () => {
-            const person = { name: 'No Minion Fan', phone: '+12345', personal: false };
+            const person = { name: 'No Minion Fan', phone: '+12345', type: 'generated' };
             const year = 2025;
             
             fs.existsSync.mockReturnValue(true);
@@ -433,7 +433,7 @@ describe('BirthdayService', () => {
         });
 
         test('should warn when minions folder does not exist', async () => {
-            const person = { name: 'No Folder Fan', phone: '+12345', personal: false };
+            const person = { name: 'No Folder Fan', phone: '+12345', type: 'generated' };
             const year = 2025;
             
             fs.existsSync.mockReturnValue(false);

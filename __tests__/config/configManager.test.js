@@ -119,8 +119,8 @@ describe('ConfigManager', () => {
 
         test('should load birthdays from file when it exists', () => {
             const mockBirthdays = [
-                { name: 'John Doe', date: '01-01', phone: '+1111111111', personal: false },
-                { name: 'Jane Smith', date: '02-02', phone: '+2222222222', personal: true }
+                { name: 'John Doe', date: '01-01', phone: '+1111111111', type: 'generated' },
+                { name: 'Jane Smith', date: '02-02', phone: '+2222222222', type: 'personal' }
             ];
 
             fs.existsSync.mockReturnValue(true);

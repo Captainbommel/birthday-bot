@@ -30,8 +30,8 @@ class CommandService {
         const [cmd, ...args] = commandText.split(/\s+/);
         switch (cmd) {
             case 'addBirthday': {
-                // Parse args: --n name -d date -ph phone -p (optional)
-                let name = '', date = '', phone = '', personal = false;
+                // Parse args: --n name -d date -ph phone -t type (optional)
+                let name = '', date = '', phone = '', type = 'generated';
                 for (let i = 0; i < args.length; i++) {
                     if (args[i] === '--n' && args[i+1]) {
                         name = args[i+1];
@@ -42,13 +42,14 @@ class CommandService {
                     } else if (args[i] === '-ph' && args[i+1]) {
                         phone = args[i+1];
                         i++;
-                    } else if (args[i] === '-p') {
-                        personal = true;
+                    } else if (args[i] === '-t' && args[i+1]) {
+                        type = args[i+1];
+                        i++;
                     }
                 }
 
                 if (!name || !date) {
-                    await this.whatsappService.sendMessage(chatId, 'Usage: $:addBirthday --n Name -d DD-MM -ph +49123456789 [-p false|true]');
+                    await this.whatsappService.sendMessage(chatId, 'Usage: $:addBirthday --n Name -d DD-MM -ph +49123456789 [-t personal|generated]');
                     return;
                 }
 
@@ -62,7 +63,7 @@ class CommandService {
                     // If file doesn't exist or is invalid, start with empty array
                 }
 
-                birthdays.push({ name, date, phone, personal });
+                birthdays.push({ name, date, phone, type });
                 try {
                     fs.writeFileSync(birthdaysFile, JSON.stringify(birthdays, null, 2), 'utf8');
                     await this.whatsappService.sendMessage(chatId, 'Birthday added successfully.');

@@ -133,7 +133,7 @@ class BirthdayService {
     }
 
     async handleBirthday(person, config, year) {
-        if (person.personal) {
+        if (person.type === 'personal') {
             // Send personal notification to you for manual handling
             if (config.yourPhoneNumber) {
                 const reminderMessage = await aiMessageService.generatePersonalReminderMessage(person.name);
@@ -183,9 +183,9 @@ class BirthdayService {
     }
 
     // Utility method to add a birthday (for future expansion)
-    addBirthday(name, date, phone, personal = false) {
+    addBirthday(name, date, phone, type = 'generated') {
         const birthdays = configManager.getBirthdays();
-        birthdays.push({ name, date, phone, personal });
+        birthdays.push({ name, date, phone, type });
         // Note: This would need a save method in configManager to persist
         logger.info(`Added birthday for ${name} on ${date}`);
     }
