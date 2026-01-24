@@ -13,6 +13,19 @@ const whatsappService = require('./src/services/whatsappService');
 const birthdayService = require('./src/services/birthdayService');
 const CommandService = require('./src/services/commandService');
 
+// Fix for Windows Ctrl+C prompt
+if (process.platform === 'win32') {
+    const readline = require('readline');
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    rl.on('SIGINT', () => {
+        process.emit('SIGINT');
+    });
+}
+
 class BirthdayBot {
     constructor() {
         this.isRunning = false;
@@ -83,15 +96,37 @@ class BirthdayBot {
 const bot = new BirthdayBot();
 
 // Graceful shutdown handlers
+let isShuttingDown = false;
+
 process.on('SIGINT', async () => {
-    logger.info('\nReceived SIGINT, shutting down gracefully...');
-    await bot.stop();
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    
+    // Suppress stderr to hide Windows PID cleanup errors
+    if (process.platform === 'win32') {
+        process.stderr.write = () => {};
+    }
+    
+    try {
+        await bot.stop();
+    } catch (error) {
+        logger.error('Error during shutdown', error);
+    }
+    
+    // Force immediate exit to prevent hanging
     process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
-    logger.info('\nReceived SIGTERM, shutting down gracefully...');
-    await bot.stop();
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    
+    try {
+        await bot.stop();
+    } catch (error) {
+        logger.error('Error during shutdown', error);
+    }
+    
     process.exit(0);
 });
 
