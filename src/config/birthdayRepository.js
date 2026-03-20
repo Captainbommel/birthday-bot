@@ -20,6 +20,14 @@ const _update    = db.prepare('UPDATE birthdays SET date = ?, phone = ?, type = 
 const _delete    = db.prepare('DELETE FROM birthdays WHERE lower(name) = lower(?)');
 const _upsert    = db.prepare('INSERT INTO birthdays (name, date, phone, type) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET date=excluded.date, phone=excluded.phone, type=excluded.type');
 
+// Wrap bulk upserts in a transaction for atomicity and performance
+const _bulkUpsert = db.transaction((entries) => {
+    for (const b of entries) {
+        const phone = b.phone ? b.phone.replace(/\s+/g, '') : null;
+        _upsert.run(b.name, b.date, phone, b.type || 'generated');
+    }
+});
+
 // On startup: if birthdays.json exists, seed the DB from it (upsert so restarts are idempotent)
 function _loadFromFile() {
     const file = path.join(__dirname, '../../birthdays.json');
@@ -28,11 +36,8 @@ function _loadFromFile() {
         const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
         const entries = Array.isArray(raw) ? raw : (raw.birthdays || []);
         if (entries.length === 0) return;
-        for (const b of entries) {
-            if (!b.name || !b.date) continue;
-            const phone = b.phone ? b.phone.replace(/\s+/g, '') : null;
-            _upsert.run(b.name, b.date, phone, b.type || 'generated');
-        }
+        const valid = entries.filter(b => b.name && b.date);
+        _bulkUpsert(valid);
         logger.info(`Loaded ${entries.length} birthdays from birthdays.json`);
     } catch (error) {
         logger.error('Failed to load birthdays from birthdays.json', error);
@@ -85,13 +90,8 @@ module.exports = {
      * Returns the number of records processed.
      */
     importJSON(birthdaysArray) {
-        let count = 0;
-        for (const b of birthdaysArray) {
-            if (!b.name || !b.date) continue;
-            const cleanPhone = b.phone ? b.phone.replace(/\s+/g, '') : null;
-            _upsert.run(b.name, b.date, cleanPhone, b.type || 'generated');
-            count++;
-        }
-        return count;
+        const valid = birthdaysArray.filter(b => b.name && b.date);
+        _bulkUpsert(valid);
+        return valid.length;
     },
 };

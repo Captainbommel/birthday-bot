@@ -28,6 +28,8 @@ describe('BirthdayRepository', () => {
                 if (sql.includes('WHERE lower'))     return mockStmts.getByName;
                 return mockStmts.insert;
             }),
+            // Simulate bun:sqlite transaction: returns a function that calls fn synchronously
+            transaction: jest.fn().mockImplementation(fn => (...args) => fn(...args)),
         };
 
         // Inject mock logger
