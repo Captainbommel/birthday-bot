@@ -6,7 +6,6 @@ const logger = require('../utils/logger');
 class ConfigManager {
     constructor() {
         this.CONFIG_FILE = path.join(__dirname, '../../config.json');
-        this.BIRTHDAYS_FILE = path.join(__dirname, '../../birthdays.json');
     }
 
     loadConfig() {
@@ -15,7 +14,8 @@ class ConfigManager {
             timezone: "Europe/Berlin",
             openaiApiKey: "",
             yourPhoneNumber: "",
-            botOwner: "John"
+            botOwner: "John",
+            birthdays: []
         };
 
         if (fs.existsSync(this.CONFIG_FILE)) {
@@ -40,24 +40,15 @@ class ConfigManager {
     }
 
     loadBirthdays() {
-        if (fs.existsSync(this.BIRTHDAYS_FILE)) {
-            try {
-                const birthdays = JSON.parse(fs.readFileSync(this.BIRTHDAYS_FILE, 'utf8'));
-                // Strip spaces from phone numbers
-                return birthdays.map(birthday => {
-                    if (birthday.phone) {
-                        birthday.phone = birthday.phone.replace(/\s+/g, '');
-                    }
-                    return birthday;
-                });
-            } catch (error) {
-                logger.error('Error loading birthdays file', error);
-                return [];
+        const config = this.loadConfig();
+        const birthdays = config.birthdays || [];
+        // Strip spaces from phone numbers
+        return birthdays.map(birthday => {
+            if (birthday.phone) {
+                birthday.phone = birthday.phone.replace(/\s+/g, '');
             }
-        } else {
-            logger.warn('Birthdays file not found. Creating empty array.');
-            return [];
-        }
+            return birthday;
+        });
     }
 
     getConfig() {

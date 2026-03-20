@@ -41,7 +41,6 @@ describe('ConfigManager', () => {
     describe('constructor', () => {
         test('should set correct file paths', () => {
             expect(path.join).toHaveBeenCalledWith(expect.any(String), '../../config.json');
-            expect(path.join).toHaveBeenCalledWith(expect.any(String), '../../birthdays.json');
         });
     });
 
@@ -51,7 +50,8 @@ describe('ConfigManager', () => {
             timezone: "Europe/Berlin",
             openaiApiKey: "",
             yourPhoneNumber: "",
-            botOwner: "John"
+            botOwner: "John",
+            birthdays: []
         };
 
         test('should return default config when file does not exist', () => {
@@ -120,53 +120,35 @@ describe('ConfigManager', () => {
     });
 
     describe('loadBirthdays', () => {
-        test('should return empty array when file does not exist', () => {
+        test('should return empty array when config file does not exist', () => {
             fs.existsSync.mockReturnValue(false);
-            
+
             const result = configManager.loadBirthdays();
-            
-            expect(fs.existsSync).toHaveBeenCalledWith(configManager.BIRTHDAYS_FILE);
-            expect(logger.warn).toHaveBeenCalledWith('Birthdays file not found. Creating empty array.');
+
             expect(result).toEqual([]);
         });
 
-        test('should load birthdays from file when it exists', () => {
+        test('should return empty array when config has no birthdays', () => {
+            fs.existsSync.mockReturnValue(true);
+            fs.readFileSync.mockReturnValue(JSON.stringify({}));
+
+            const result = configManager.loadBirthdays();
+
+            expect(result).toEqual([]);
+        });
+
+        test('should load birthdays from config.birthdays when it exists', () => {
             const mockBirthdays = [
                 { name: 'John Doe', date: '01-01', phone: '+1111111111', type: 'generated' },
                 { name: 'Jane Smith', date: '02-02', phone: '+2222222222', type: 'personal' }
             ];
 
             fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const result = configManager.loadBirthdays();
 
-            expect(fs.existsSync).toHaveBeenCalledWith(configManager.BIRTHDAYS_FILE);
-            expect(fs.readFileSync).toHaveBeenCalledWith(configManager.BIRTHDAYS_FILE, 'utf8');
             expect(result).toEqual(mockBirthdays);
-        });
-
-        test('should return empty array and log error when JSON parsing fails', () => {
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue('invalid json');
-
-            const result = configManager.loadBirthdays();
-
-            expect(logger.error).toHaveBeenCalledWith('Error loading birthdays file', expect.any(Error));
-            expect(result).toEqual([]);
-        });
-
-        test('should handle file read errors gracefully', () => {
-            const readError = new Error('File read error');
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockImplementation(() => {
-                throw readError;
-            });
-
-            const result = configManager.loadBirthdays();
-
-            expect(logger.error).toHaveBeenCalledWith('Error loading birthdays file', readError);
-            expect(result).toEqual([]);
         });
 
         test('should strip spaces from phone numbers in birthdays', () => {
@@ -176,7 +158,7 @@ describe('ConfigManager', () => {
             ];
 
             fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify(birthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays }));
 
             const result = configManager.loadBirthdays();
 
@@ -190,7 +172,7 @@ describe('ConfigManager', () => {
             ];
 
             fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify(birthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays }));
 
             const result = configManager.loadBirthdays();
 

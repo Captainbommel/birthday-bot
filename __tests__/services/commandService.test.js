@@ -94,14 +94,14 @@ describe('CommandService', () => {
     describe('handleAddOrEditBirthday', () => {
         test('should add a new birthday successfully', async () => {
             const mockBirthdays = [];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const args = ['--n', 'John', '-d', '15-03', '-ph', '+4912345', '-t', 'generated'];
-            await commandService.handleAddOrEditBirthday('addBirthday', args, mockChatId);
+            await commandService.handleAddOrEditBirthday('addBday', args, mockChatId);
 
             expect(fs.writeFileSync).toHaveBeenCalled();
-            const savedData = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
-            expect(savedData).toEqual([
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.birthdays).toEqual([
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
             ]);
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
@@ -112,23 +112,23 @@ describe('CommandService', () => {
 
         test('should use default type when not specified', async () => {
             const mockBirthdays = [];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const args = ['--n', 'Jane', '-d', '20-06', '-ph', '+4999999'];
-            await commandService.handleAddOrEditBirthday('addBirthday', args, mockChatId);
+            await commandService.handleAddOrEditBirthday('addBday', args, mockChatId);
 
-            const savedData = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
-            expect(savedData[0].type).toBe('generated');
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.birthdays[0].type).toBe('generated');
         });
 
         test('should prevent adding duplicate birthday', async () => {
             const mockBirthdays = [
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const args = ['--n', 'John', '-d', '20-03', '-ph', '+4999999'];
-            await commandService.handleAddOrEditBirthday('addBirthday', args, mockChatId);
+            await commandService.handleAddOrEditBirthday('addBday', args, mockChatId);
 
             expect(fs.writeFileSync).not.toHaveBeenCalled();
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
@@ -141,13 +141,13 @@ describe('CommandService', () => {
             const mockBirthdays = [
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const args = ['--n', 'John', '-d', '20-03', '-ph', '+4999999', '-t', 'personal'];
-            await commandService.handleAddOrEditBirthday('editBirthday', args, mockChatId);
+            await commandService.handleAddOrEditBirthday('editBday', args, mockChatId);
 
-            const savedData = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
-            expect(savedData).toEqual([
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.birthdays).toEqual([
                 { name: 'John', date: '20-03', phone: '+4999999', type: 'personal' }
             ]);
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
@@ -158,16 +158,48 @@ describe('CommandService', () => {
 
         test('should fail to edit non-existent birthday', async () => {
             const mockBirthdays = [];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const args = ['--n', 'John', '-d', '20-03', '-ph', '+4999999'];
-            await commandService.handleAddOrEditBirthday('editBirthday', args, mockChatId);
+            await commandService.handleAddOrEditBirthday('editBday', args, mockChatId);
 
             expect(fs.writeFileSync).not.toHaveBeenCalled();
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
                 mockChatId,
                 expect.stringContaining('not found')
             );
+        });
+
+        test('should preserve existing config fields when adding a birthday', async () => {
+            const existingConfig = {
+                cronSchedule: '0 9 * * *',
+                timezone: 'UTC',
+                openaiApiKey: 'my-key',
+                birthdays: []
+            };
+            fs.readFileSync.mockReturnValue(JSON.stringify(existingConfig));
+
+            const args = ['--n', 'John', '-d', '15-03', '-ph', '+4912345', '-t', 'generated'];
+            await commandService.handleAddOrEditBirthday('addBday', args, mockChatId);
+
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.cronSchedule).toBe('0 9 * * *');
+            expect(savedConfig.timezone).toBe('UTC');
+            expect(savedConfig.openaiApiKey).toBe('my-key');
+        });
+
+        test('should handle missing birthdays key in existing config', async () => {
+            // Simulate an old config.json that predates the merge
+            const legacyConfig = { cronSchedule: '0 8 * * *' };
+            fs.readFileSync.mockReturnValue(JSON.stringify(legacyConfig));
+
+            const args = ['--n', 'John', '-d', '15-03', '-ph', '+4912345'];
+            await commandService.handleAddOrEditBirthday('addBday', args, mockChatId);
+
+            expect(fs.writeFileSync).toHaveBeenCalled();
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.birthdays).toHaveLength(1);
+            expect(savedConfig.cronSchedule).toBe('0 8 * * *');
         });
 
         test('should validate date format', async () => {
@@ -199,14 +231,14 @@ describe('CommandService', () => {
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' },
                 { name: 'Jane', date: '20-06', phone: '+4999999', type: 'personal' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const args = ['--n', 'John'];
             await commandService.handleRemoveBirthday(args, mockChatId);
 
-            const savedData = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
-            expect(savedData).toHaveLength(1);
-            expect(savedData[0].name).toBe('Jane');
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.birthdays).toHaveLength(1);
+            expect(savedConfig.birthdays[0].name).toBe('Jane');
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
                 mockChatId,
                 expect.stringContaining('Birthday removed successfully')
@@ -217,13 +249,32 @@ describe('CommandService', () => {
             const mockBirthdays = [
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
 
             const args = ['--n', 'JOHN'];
             await commandService.handleRemoveBirthday(args, mockChatId);
 
-            const savedData = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
-            expect(savedData).toHaveLength(0);
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.birthdays).toHaveLength(0);
+        });
+
+        test('should preserve existing config fields when removing a birthday', async () => {
+            const existingConfig = {
+                cronSchedule: '0 9 * * *',
+                timezone: 'UTC',
+                birthdays: [
+                    { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
+                ]
+            };
+            fs.readFileSync.mockReturnValue(JSON.stringify(existingConfig));
+
+            const args = ['--n', 'John'];
+            await commandService.handleRemoveBirthday(args, mockChatId);
+
+            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
+            expect(savedConfig.cronSchedule).toBe('0 9 * * *');
+            expect(savedConfig.timezone).toBe('UTC');
+            expect(savedConfig.birthdays).toHaveLength(0);
         });
 
         test('should fail when birthday not found', async () => {
@@ -261,7 +312,7 @@ describe('CommandService', () => {
                 { name: 'Jane', date: '10-01', phone: '+4999999', type: 'personal' },
                 { name: 'Bob', date: '20-12', phone: '+4988888', type: 'generated_topic_age' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            configManager.setMockBirthdays(mockBirthdays);
 
             await commandService.handleListBirthdays(mockChatId);
 
@@ -281,7 +332,7 @@ describe('CommandService', () => {
         });
 
         test('should handle empty birthdays list', async () => {
-            fs.readFileSync.mockReturnValue(JSON.stringify([]));
+            configManager.setMockBirthdays([]);
 
             await commandService.handleListBirthdays(mockChatId);
 
@@ -295,7 +346,7 @@ describe('CommandService', () => {
             const mockBirthdays = [
                 { name: 'John', date: '15-03', type: 'generated' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            configManager.setMockBirthdays(mockBirthdays);
 
             await commandService.handleListBirthdays(mockChatId);
 
@@ -487,7 +538,7 @@ describe('CommandService', () => {
             const mockBirthdays = [
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            configManager.setMockBirthdays(mockBirthdays);
             mockBirthdayService.handleBirthday = jest.fn().mockResolvedValue();
 
             const args = ['--n', 'John'];
@@ -509,7 +560,7 @@ describe('CommandService', () => {
             const mockBirthdays = [
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            configManager.setMockBirthdays(mockBirthdays);
             mockBirthdayService.handleBirthday = jest.fn().mockResolvedValue();
 
             const args = ['--n', 'JOHN'];
@@ -522,7 +573,7 @@ describe('CommandService', () => {
             const mockBirthdays = [
                 { name: 'Jane', date: '20-06', phone: '+4999999', type: 'personal' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            configManager.setMockBirthdays(mockBirthdays);
             mockBirthdayService.handleBirthday = jest.fn();
 
             const args = ['--n', 'John'];
@@ -545,25 +596,27 @@ describe('CommandService', () => {
             );
         });
 
-        test('should handle file read errors', async () => {
-            fs.readFileSync.mockImplementation(() => {
-                throw new Error('File read error');
-            });
+        test('should handle errors from handleBirthday when not defined', async () => {
+            configManager.setMockBirthdays([
+                { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
+            ]);
+            // handleBirthday not defined on mockBirthdayService — triggers error
 
             const args = ['--n', 'John'];
             await commandService.handleTriggerBirthday(args, mockChatId);
 
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
                 mockChatId,
-                expect.stringContaining('Failed to read birthdays file')
+                expect.stringContaining('Failed to send birthday message')
             );
+            expect(logger.error).toHaveBeenCalled();
         });
 
         test('should handle birthday sending errors', async () => {
             const mockBirthdays = [
                 { name: 'John', date: '15-03', phone: '+4912345', type: 'generated' }
             ];
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockBirthdays));
+            configManager.setMockBirthdays(mockBirthdays);
             mockBirthdayService.handleBirthday = jest.fn().mockRejectedValue(new Error('Send error'));
 
             const args = ['--n', 'John'];

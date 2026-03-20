@@ -142,12 +142,14 @@ class CommandService {
             return;
         }
 
-        // Load current birthdays
-        const birthdaysFile = path.join(__dirname, '../../birthdays.json');
+        // Load current config and birthdays
+        const configFile = path.join(__dirname, '../../config.json');
+        let config = {};
         let birthdays = [];
 
         try {
-            birthdays = JSON.parse(fs.readFileSync(birthdaysFile, 'utf8'));
+            config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+            birthdays = config.birthdays || [];
         } catch (err) {
             // If file doesn't exist or is invalid, start with empty array
         }
@@ -155,23 +157,24 @@ class CommandService {
         // Check if birthday exists (for both add and edit)
         const existingIndex = birthdays.findIndex(b => b.name.toLowerCase() === name.toLowerCase());
         
-        if (cmd === 'editBirthday') {
+        if (cmd === 'editBday') {
             if (existingIndex === -1) {
-                await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" not found. Use $:addBirthday to add a new one.`);
+                await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" not found. Use $:addBday to add a new one.`);
                 return;
             }
             birthdays[existingIndex] = { name, date, phone, type };
         } else {
             if (existingIndex !== -1) {
-                await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" already exists. Use $:editBirthday to modify it, or $:removeBirthday to delete it first.`);
+                await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" already exists. Use $:editBday to modify it, or $:removeBday to delete it first.`);
                 return;
             }
             birthdays.push({ name, date, phone, type });
         }
 
         try {
-            fs.writeFileSync(birthdaysFile, JSON.stringify(birthdays, null, 2), 'utf8');
-            const action = cmd === 'editBirthday' ? 'updated' : 'added';
+            config.birthdays = birthdays;
+            fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
+            const action = cmd === 'editBday' ? 'updated' : 'added';
             await this.whatsappService.sendMessage(chatId, `Birthday ${action} successfully for ${name} (${date})`);
         } catch (err) {
             logger.error('Failed to save birthday', err);
@@ -193,13 +196,15 @@ class CommandService {
             return;
         }
 
-        const birthdaysFile = path.join(__dirname, '../../birthdays.json');
+        const configFile = path.join(__dirname, '../../config.json');
+        let config = {};
         let birthdays = [];
 
         try {
-            birthdays = JSON.parse(fs.readFileSync(birthdaysFile, 'utf8'));
+            config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+            birthdays = config.birthdays || [];
         } catch (err) {
-            await this.whatsappService.sendMessage(chatId, 'Failed to read birthdays file.');
+            await this.whatsappService.sendMessage(chatId, 'Failed to read config file.');
             return;
         }
 
@@ -212,7 +217,8 @@ class CommandService {
         }
 
         try {
-            fs.writeFileSync(birthdaysFile, JSON.stringify(birthdays, null, 2), 'utf8');
+            config.birthdays = birthdays;
+            fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
             await this.whatsappService.sendMessage(chatId, `Birthday removed successfully for ${name}.`);
         } catch (err) {
             logger.error('Failed to save birthdays', err);
@@ -221,15 +227,7 @@ class CommandService {
     }
 
     async handleListBirthdays(chatId) {
-        const birthdaysFile = path.join(__dirname, '../../birthdays.json');
-        let birthdays = [];
-
-        try {
-            birthdays = JSON.parse(fs.readFileSync(birthdaysFile, 'utf8'));
-        } catch (err) {
-            await this.whatsappService.sendMessage(chatId, 'Failed to read birthdays file.');
-            return;
-        }
+        const birthdays = configManager.getBirthdays();
 
         if (birthdays.length === 0) {
             await this.whatsappService.sendMessage(chatId, 'No birthdays saved yet.');
@@ -364,15 +362,7 @@ class CommandService {
             return;
         }
 
-        const birthdaysFile = path.join(__dirname, '../../birthdays.json');
-        let birthdays = [];
-
-        try {
-            birthdays = JSON.parse(fs.readFileSync(birthdaysFile, 'utf8'));
-        } catch (err) {
-            await this.whatsappService.sendMessage(chatId, 'Failed to read birthdays file.');
-            return;
-        }
+        const birthdays = configManager.getBirthdays();
 
         const person = birthdays.find(b => b.name.toLowerCase() === name.toLowerCase());
 
