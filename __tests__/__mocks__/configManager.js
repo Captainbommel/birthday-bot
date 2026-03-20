@@ -36,6 +36,7 @@ const configManager = {
     getBirthdays: mock(() => mockBirthdays),
     loadConfig: mock(() => mockConfig),
     loadBirthdays: mock(() => mockBirthdays),
+    setCronSchedule: mock(),
     // Helper methods for tests
     setMockConfig: (newConfig) => {
         Object.assign(mockConfig, newConfig);
@@ -52,6 +53,7 @@ const configManager = {
         configManager.getBirthdays.mockClear();
         configManager.loadConfig.mockClear();
         configManager.loadBirthdays.mockClear();
+        configManager.setCronSchedule.mockClear();
     }
 };
 

@@ -1,144 +1,161 @@
 const { jest, mock, spyOn, describe, test, expect, beforeEach, afterEach } = require('bun:test');
 
+// ── Stable mock functions – reassigned per test; wrapper closures stay live ──
+let mockSettingsGet = jest.fn().mockReturnValue(null);
+let mockSettingsSet = jest.fn();
+
+// Wrappers delegate through the live variable so the reassigned fn is always called.
+const settingsGetWrapper = (...args) => mockSettingsGet(...args);
+const settingsSetWrapper = (...args) => mockSettingsSet(...args);
+
+const mockDb = {
+    run: jest.fn(),
+    prepare: jest.fn().mockImplementation((sql) => {
+        if (sql.toUpperCase().startsWith('SELECT')) return { get: settingsGetWrapper };
+        return { run: settingsSetWrapper };
+    }),
+};
+
+const mockBirthdayRepository = {
+    getAll: jest.fn().mockReturnValue([]),
+    getByName: jest.fn().mockReturnValue(null),
+    add: jest.fn(),
+    update: jest.fn(),
+    remove: jest.fn().mockReturnValue(false),
+    exportJSON: jest.fn().mockReturnValue('{}'),
+    importJSON: jest.fn().mockReturnValue(0),
+};
+
+// Register module mocks BEFORE requiring the module under test.
+// mock.module intercepts at Bun's resolution layer, preventing the real
+// bun:sqlite database from being built when configManager is re-required.
 mock.module('node-cron', () => ({ schedule: jest.fn(), validate: jest.fn() }));
+mock.module('../../src/config/database', () => mockDb);
+mock.module('../../src/config/birthdayRepository', () => mockBirthdayRepository);
 
-const fs = require('fs');
-const path = require('path');
+// Trigger initial module load at file scope
+require('../../src/config/configManager');
+
 const cron = require('node-cron');
-
 const logger = require('../../src/utils/logger');
 
-let mockBirthdayRepository;
-
 describe('ConfigManager', () => {
-    let ConfigManager;
     let configManager;
+    let savedEnv;
 
     beforeEach(() => {
-        // Clear all mocks
         jest.clearAllMocks();
 
-        // Fresh birthday repository mock
-        mockBirthdayRepository = {
-            getAll: jest.fn().mockReturnValue([]),
-            getByName: jest.fn().mockReturnValue(null),
-            add: jest.fn(),
-            update: jest.fn(),
-            remove: jest.fn().mockReturnValue(false),
-            exportJSON: jest.fn().mockReturnValue('{}'),
-            importJSON: jest.fn().mockReturnValue(0),
-        };
+        // Reassign fresh mock functions so each test starts with zero call history
+        mockSettingsGet = jest.fn().mockReturnValue(null);
+        mockSettingsSet = jest.fn();
 
-        // Spy on logger methods
+        // Restore mockDb.prepare implementation after clearAllMocks clears it
+        mockDb.prepare.mockImplementation((sql) => {
+            if (sql.toUpperCase().startsWith('SELECT')) return { get: settingsGetWrapper };
+            return { run: settingsSetWrapper };
+        });
+
+        // Restore birthdayRepository default return values
+        mockBirthdayRepository.getAll.mockReturnValue([]);
+        mockBirthdayRepository.getByName.mockReturnValue(null);
+        mockBirthdayRepository.remove.mockReturnValue(false);
+        mockBirthdayRepository.exportJSON.mockReturnValue('{}');
+        mockBirthdayRepository.importJSON.mockReturnValue(0);
+
+        // Save and clear relevant env vars so each test starts clean
+        savedEnv = {
+            OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+            TIMEZONE: process.env.TIMEZONE,
+            YOUR_PHONE_NUMBER: process.env.YOUR_PHONE_NUMBER,
+            BOT_OWNER: process.env.BOT_OWNER,
+            CRON_SCHEDULE: process.env.CRON_SCHEDULE,
+        };
+        delete process.env.OPENAI_API_KEY;
+        delete process.env.TIMEZONE;
+        delete process.env.YOUR_PHONE_NUMBER;
+        delete process.env.BOT_OWNER;
+        delete process.env.CRON_SCHEDULE;
+
         spyOn(logger, 'info').mockImplementation(() => {});
         spyOn(logger, 'warn').mockImplementation(() => {});
         spyOn(logger, 'error').mockImplementation(() => {});
         spyOn(logger, 'debug').mockImplementation(() => {});
 
-        // Spy on Node built-ins before re-requiring ConfigManager
-        spyOn(path, 'join');
-        spyOn(fs, 'existsSync').mockReturnValue(false);
-        spyOn(fs, 'readFileSync').mockReturnValue('');
-        spyOn(fs, 'writeFileSync').mockImplementation(() => {});
-
-        // Inject birthdayRepository mock so configManager doesn't open SQLite
-        const repoPath = require.resolve('../../src/config/birthdayRepository');
-        require.cache[repoPath] = {
-            id: repoPath,
-            filename: repoPath,
-            loaded: true,
-            exports: mockBirthdayRepository,
-            children: [],
-            paths: module.paths,
-        };
-
-        // Re-require the module to get a fresh instance (replaces jest.isolateModules)
         delete require.cache[require.resolve('../../src/config/configManager')];
-        ConfigManager = require('../../src/config/configManager');
-        configManager = ConfigManager;
+        configManager = require('../../src/config/configManager');
     });
 
     afterEach(() => {
+        Object.entries(savedEnv).forEach(([key, val]) => {
+            if (val === undefined) delete process.env[key];
+            else process.env[key] = val;
+        });
         mock.restore();
     });
 
-    describe('constructor', () => {
-        test('should set correct file paths', () => {
-            expect(path.join).toHaveBeenCalledWith(expect.any(String), '../../config.json');
+    describe('getConfig', () => {
+        const defaults = {
+            cronSchedule: '0 8 * * *',
+            timezone: 'Europe/Berlin',
+            openaiApiKey: '',
+            yourPhoneNumber: '',
+            botOwner: 'John',
+        };
+
+        test('should return defaults when no env vars are set', () => {
+            expect(configManager.getConfig()).toEqual(defaults);
+        });
+
+        test('should read OPENAI_API_KEY from process.env', () => {
+            process.env.OPENAI_API_KEY = 'test-key';
+            expect(configManager.getConfig().openaiApiKey).toBe('test-key');
+        });
+
+        test('should read TIMEZONE from process.env', () => {
+            process.env.TIMEZONE = 'America/New_York';
+            expect(configManager.getConfig().timezone).toBe('America/New_York');
+        });
+
+        test('should read YOUR_PHONE_NUMBER from process.env and strip spaces', () => {
+            process.env.YOUR_PHONE_NUMBER = '+49 1575 1234';
+            expect(configManager.getConfig().yourPhoneNumber).toBe('+4915751234');
+        });
+
+        test('should read BOT_OWNER from process.env', () => {
+            process.env.BOT_OWNER = 'Lars';
+            expect(configManager.getConfig().botOwner).toBe('Lars');
+        });
+
+        test('should read cronSchedule from the database', () => {
+            mockSettingsGet.mockReturnValue({ value: '0 9 * * *' });
+            expect(configManager.getConfig().cronSchedule).toBe('0 9 * * *');
+        });
+
+        test('should fall back to CRON_SCHEDULE env var when not in DB', () => {
+            mockSettingsGet.mockReturnValue(null);
+            process.env.CRON_SCHEDULE = '0 10 * * *';
+            expect(configManager.getConfig().cronSchedule).toBe('0 10 * * *');
+        });
+
+        test('should use default cronSchedule when not in DB and not in env', () => {
+            mockSettingsGet.mockReturnValue(null);
+            expect(configManager.getConfig().cronSchedule).toBe('0 8 * * *');
         });
     });
 
     describe('loadConfig', () => {
-        const defaultConfig = {
-            cronSchedule: "0 8 * * *",
-            timezone: "Europe/Berlin",
-            openaiApiKey: "",
-            yourPhoneNumber: "",
-            botOwner: "John",
-        };
-
-        test('should return default config when file does not exist', () => {
-            fs.existsSync.mockReturnValue(false);
-            
-            const result = configManager.loadConfig();
-            
-            expect(fs.existsSync).toHaveBeenCalledWith(configManager.CONFIG_FILE);
-            expect(logger.error).toHaveBeenCalledWith('Config file not found. Please create config.json with required settings.');
-            expect(result).toEqual(defaultConfig);
+        test('should be an alias for getConfig', () => {
+            const spy = jest.spyOn(configManager, 'getConfig');
+            configManager.loadConfig();
+            expect(spy).toHaveBeenCalled();
         });
+    });
 
-        test('should load and merge config from file when it exists', () => {
-            const fileConfig = {
-                cronSchedule: "0 9 * * *",
-                openaiApiKey: "test-api-key",
-                yourPhoneNumber: "+1234567890"
-            };
-            const expectedConfig = { ...defaultConfig, ...fileConfig };
-
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify(fileConfig));
-
-            const result = configManager.loadConfig();
-
-            expect(fs.existsSync).toHaveBeenCalledWith(configManager.CONFIG_FILE);
-            expect(fs.readFileSync).toHaveBeenCalledWith(configManager.CONFIG_FILE, 'utf8');
-            expect(result).toEqual(expectedConfig);
-        });
-
-        test('should return default config and log error when JSON parsing fails', () => {
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue('invalid json');
-
-            const result = configManager.loadConfig();
-
-            expect(logger.error).toHaveBeenCalledWith('Error loading config file', expect.any(Error));
-            expect(result).toEqual(defaultConfig);
-        });
-
-        test('should handle file read errors gracefully', () => {
-            const readError = new Error('File read error');
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockImplementation(() => {
-                throw readError;
-            });
-
-            const result = configManager.loadConfig();
-
-            expect(logger.error).toHaveBeenCalledWith('Error loading config file', readError);
-            expect(result).toEqual(defaultConfig);
-        });
-
-        test('should strip spaces from yourPhoneNumber', () => {
-            const fileConfig = {
-                yourPhoneNumber: "+1 234 567 890"
-            };
-            
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify(fileConfig));
-
-            const result = configManager.loadConfig();
-
-            expect(result.yourPhoneNumber).toBe("+1234567890");
+    describe('setCronSchedule', () => {
+        test('should persist schedule to the database', () => {
+            configManager.setCronSchedule('0 12 * * *');
+            expect(mockSettingsSet).toHaveBeenCalledWith('cronSchedule', '0 12 * * *');
         });
     });
 
@@ -162,24 +179,6 @@ describe('ConfigManager', () => {
             const result = configManager.loadBirthdays();
 
             expect(result).toEqual([]);
-        });
-    });
-
-    describe('getConfig', () => {
-        test('should call loadConfig and return fresh config', () => {
-            const mockConfig = { cronSchedule: "0 9 * * *", timezone: "UTC" };
-            
-            // Mock loadConfig method
-            const originalLoadConfig = configManager.loadConfig;
-            configManager.loadConfig = jest.fn().mockReturnValue(mockConfig);
-
-            const result = configManager.getConfig();
-
-            expect(configManager.loadConfig).toHaveBeenCalled();
-            expect(result).toEqual(mockConfig);
-
-            // Restore original method
-            configManager.loadConfig = originalLoadConfig;
         });
     });
 
@@ -236,8 +235,8 @@ describe('ConfigManager', () => {
 
             const result = configManager.validateConfig();
 
-            expect(logger.warn).toHaveBeenCalledWith('OpenAI API key not configured. Add it to config.json');
-            expect(logger.warn).toHaveBeenCalledWith('Your phone number is not configured. Add it to config.json for personal notifications');
+            expect(logger.warn).toHaveBeenCalledWith('OpenAI API key not configured. Set OPENAI_API_KEY in .env');
+            expect(logger.warn).toHaveBeenCalledWith('Your phone number is not configured. Set YOUR_PHONE_NUMBER in .env for personal notifications');
             expect(result).toBe(false); // Returns false when there are warnings
         });
 
@@ -253,8 +252,8 @@ describe('ConfigManager', () => {
 
             const result = configManager.validateConfig();
 
-            expect(logger.warn).toHaveBeenCalledWith('OpenAI API key not configured. Add it to config.json');
-            expect(logger.warn).toHaveBeenCalledWith('Your phone number is not configured. Add it to config.json for personal notifications');
+            expect(logger.warn).toHaveBeenCalledWith('OpenAI API key not configured. Set OPENAI_API_KEY in .env');
+            expect(logger.warn).toHaveBeenCalledWith('Your phone number is not configured. Set YOUR_PHONE_NUMBER in .env for personal notifications');
             expect(result).toBe(false);
         });
 

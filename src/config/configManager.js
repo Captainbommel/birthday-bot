@@ -1,56 +1,50 @@
-const fs = require('fs');
-const path = require('path');
 const cron = require('node-cron');
 const logger = require('../utils/logger');
+const db = require('./database');
 const birthdayRepository = require('./birthdayRepository');
 
+const DEFAULT_CRON = '0 8 * * *';
+const DEFAULT_TIMEZONE = 'Europe/Berlin';
+
+db.run(`
+    CREATE TABLE IF NOT EXISTS settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )
+`);
+
+const _settingsGet = db.prepare('SELECT value FROM settings WHERE key = ?');
+const _settingsSet = db.prepare(
+    'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
+);
+
 class ConfigManager {
-    constructor() {
-        this.CONFIG_FILE = path.join(__dirname, '../../config.json');
+    getConfig() {
+        const row = _settingsGet.get('cronSchedule');
+        const cronFromDb = row !== null && row !== undefined ? row.value : null;
+        return {
+            cronSchedule: cronFromDb || process.env.CRON_SCHEDULE || DEFAULT_CRON,
+            timezone: process.env.TIMEZONE || DEFAULT_TIMEZONE,
+            openaiApiKey: process.env.OPENAI_API_KEY || '',
+            yourPhoneNumber: (process.env.YOUR_PHONE_NUMBER || '').replace(/\s+/g, ''),
+            botOwner: process.env.BOT_OWNER || 'John',
+        };
     }
 
     loadConfig() {
-        const defaultConfig = {
-            cronSchedule: "0 8 * * *",
-            timezone: "Europe/Berlin",
-            openaiApiKey: "",
-            yourPhoneNumber: "",
-            botOwner: "John",
-        };
-
-        if (fs.existsSync(this.CONFIG_FILE)) {
-            try {
-                const loadedConfig = JSON.parse(fs.readFileSync(this.CONFIG_FILE, 'utf8'));
-                const config = { ...defaultConfig, ...loadedConfig };
-
-                // Strip spaces from phone number
-                if (config.yourPhoneNumber) {
-                    config.yourPhoneNumber = config.yourPhoneNumber.replace(/\s+/g, '');
-                }
-
-                return config;
-            } catch (error) {
-                logger.error('Error loading config file', error);
-                return defaultConfig;
-            }
-        } else {
-            logger.error('Config file not found. Please create config.json with required settings.');
-            return defaultConfig;
-        }
+        return this.getConfig();
     }
 
     loadBirthdays() {
         return birthdayRepository.getAll();
     }
 
-    getConfig() {
-        // Always load fresh config to allow runtime changes
-        return this.loadConfig();
+    getBirthdays() {
+        return birthdayRepository.getAll();
     }
 
-    getBirthdays() {
-        // Always fetch fresh birthdays from the database
-        return birthdayRepository.getAll();
+    setCronSchedule(schedule) {
+        _settingsSet.run('cronSchedule', String(schedule));
     }
 
     validateConfig() {
@@ -59,11 +53,11 @@ class ConfigManager {
         const errors = [];
 
         if (!config.openaiApiKey) {
-            warnings.push('OpenAI API key not configured. Add it to config.json');
+            warnings.push('OpenAI API key not configured. Set OPENAI_API_KEY in .env');
         }
 
         if (!config.yourPhoneNumber) {
-            warnings.push('Your phone number is not configured. Add it to config.json for personal notifications');
+            warnings.push('Your phone number is not configured. Set YOUR_PHONE_NUMBER in .env for personal notifications');
         }
 
         // Validate cron schedule

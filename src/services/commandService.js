@@ -308,15 +308,8 @@ class CommandService {
             return;
         }
 
-        const configFile = path.join(__dirname, '../../config.json');
-        let config = {};
-
         try {
-            config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            config.cronSchedule = schedule;
-            fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
-            
-            // The birthday service will automatically detect and update the schedule
+            configManager.setCronSchedule(schedule);
             await this.whatsappService.sendMessage(chatId, `Cron schedule updated to: ${schedule}\n\nThe bot will automatically apply this change within 1 minute.`);
         } catch (err) {
             logger.error('Failed to update cron schedule', err);

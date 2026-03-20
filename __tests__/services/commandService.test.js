@@ -378,16 +378,11 @@ describe('CommandService', () => {
 
     describe('handleSetCron', () => {
         test('should update cron schedule successfully', async () => {
-            const mockConfig = { cronSchedule: '0 8 * * *' };
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockConfig));
-
             const args = ['--schedule', '0 12 * * *'];
             await commandService.handleSetCron(args, mockChatId);
 
             expect(cron.validate).toHaveBeenCalledWith('0 12 * * *');
-            expect(fs.writeFileSync).toHaveBeenCalled();
-            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
-            expect(savedConfig.cronSchedule).toBe('0 12 * * *');
+            expect(configManager.setCronSchedule).toHaveBeenCalledWith('0 12 * * *');
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
                 mockChatId,
                 expect.stringContaining('Cron schedule updated')
@@ -395,14 +390,10 @@ describe('CommandService', () => {
         });
 
         test('should handle quoted schedule strings', async () => {
-            const mockConfig = { cronSchedule: '0 8 * * *' };
-            fs.readFileSync.mockReturnValue(JSON.stringify(mockConfig));
-
             const args = ['--schedule', '"0', '12', '*', '*', '*"'];
             await commandService.handleSetCron(args, mockChatId);
 
-            const savedConfig = JSON.parse(fs.writeFileSync.mock.calls[0][1]);
-            expect(savedConfig.cronSchedule).toBe('0 12 * * *');
+            expect(configManager.setCronSchedule).toHaveBeenCalledWith('0 12 * * *');
         });
 
         test('should validate cron expression', async () => {
@@ -411,7 +402,7 @@ describe('CommandService', () => {
             const args = ['--schedule', 'invalid'];
             await commandService.handleSetCron(args, mockChatId);
 
-            expect(fs.writeFileSync).not.toHaveBeenCalled();
+            expect(configManager.setCronSchedule).not.toHaveBeenCalled();
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
                 mockChatId,
                 expect.stringContaining('Invalid cron schedule')
@@ -422,7 +413,7 @@ describe('CommandService', () => {
             const args = [];
             await commandService.handleSetCron(args, mockChatId);
 
-            expect(fs.writeFileSync).not.toHaveBeenCalled();
+            expect(configManager.setCronSchedule).not.toHaveBeenCalled();
             expect(mockWhatsappService.sendMessage).toHaveBeenCalledWith(
                 mockChatId,
                 expect.stringContaining('Usage:')
