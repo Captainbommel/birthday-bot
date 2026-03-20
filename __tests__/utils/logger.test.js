@@ -3,10 +3,10 @@ const { jest, mock, spyOn, describe, test, expect, beforeEach, afterEach } = req
 // Create moment mock at module scope
 const moment = jest.fn();
 
-// Patch require.cache directly so CJS require('moment') gets the mock function
+// Patch require.cache directly so CJS require('moment-timezone') gets the mock function
 // (mock.module creates an ESM namespace which CJS sees as Module object, not callable)
-require('moment');
-require.cache[require.resolve('moment')].exports = moment;
+require('moment-timezone');
+require.cache[require.resolve('moment-timezone')].exports = moment;
 
 const fs = require('fs');
 const path = require('path');
