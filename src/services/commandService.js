@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const configManager = require('../config/configManager');
+const birthdayRepository = require('../config/birthdayRepository');
 const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
@@ -14,10 +15,26 @@ class CommandService {
     }
 
     async startPolling(personalChatId) {
+        // Seed lastCheckedMessageId from the current latest message so we don't
+        // re-execute commands that were sent before the bot started.
+        try {
+            const seed = await this.whatsappService.getLatestMessage(personalChatId);
+            if (seed) this.lastCheckedMessageId = seed.id;
+        } catch (err) {
+            logger.warn('Could not seed initial message ID; pre-existing commands may re-execute', err);
+        }
+
         setInterval(async () => {
             try {
                 const latestMsg = await this.whatsappService.getLatestMessage(personalChatId);
-                if (!latestMsg || latestMsg.id === this.lastCheckedMessageId) return;
+                if (!latestMsg) return;
+                // If seed failed at startup, use the first message we see to initialize
+                // without processing it — prevents re-executing pre-existing commands.
+                if (this.lastCheckedMessageId === null) {
+                    this.lastCheckedMessageId = latestMsg.id;
+                    return;
+                }
+                if (latestMsg.id === this.lastCheckedMessageId) return;
                 this.lastCheckedMessageId = latestMsg.id;
                 if (latestMsg.text && latestMsg.text.startsWith(this.commandPrefix)) {
                     const commandText = latestMsg.text.slice(this.commandPrefix.length).trim();
@@ -47,6 +64,14 @@ class CommandService {
 
             case 'listBdays':
                 await this.handleListBirthdays(chatId);
+                break;
+
+            case 'exportBdays':
+                await this.handleExportBirthdays(chatId);
+                break;
+
+            case 'importBdays':
+                await this.handleImportBirthdays(args, chatId);
                 break;
 
             case 'setCron':
@@ -89,6 +114,12 @@ class CommandService {
 
 • $:listBdays
   Show all saved birthdays
+
+• $:exportBdays
+  Export all birthdays to birthdays.json
+
+• $:importBdays --file birthdays.json
+  Import birthdays from birthdays.json (upserts existing entries)
 
 • $:triggerBday --n Name
   Manually send birthday message for a person
@@ -142,38 +173,23 @@ class CommandService {
             return;
         }
 
-        // Load current config and birthdays
-        const configFile = path.join(__dirname, '../../config.json');
-        let config = {};
-        let birthdays = [];
-
-        try {
-            config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            birthdays = config.birthdays || [];
-        } catch (err) {
-            // If file doesn't exist or is invalid, start with empty array
-        }
-
         // Check if birthday exists (for both add and edit)
-        const existingIndex = birthdays.findIndex(b => b.name.toLowerCase() === name.toLowerCase());
-        
-        if (cmd === 'editBday') {
-            if (existingIndex === -1) {
-                await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" not found. Use $:addBday to add a new one.`);
-                return;
-            }
-            birthdays[existingIndex] = { name, date, phone, type };
-        } else {
-            if (existingIndex !== -1) {
-                await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" already exists. Use $:editBday to modify it, or $:removeBday to delete it first.`);
-                return;
-            }
-            birthdays.push({ name, date, phone, type });
-        }
+        const existing = birthdayRepository.getByName(name);
 
         try {
-            config.birthdays = birthdays;
-            fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
+            if (cmd === 'editBday') {
+                if (!existing) {
+                    await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" not found. Use $:addBday to add a new one.`);
+                    return;
+                }
+                birthdayRepository.update(name, date, phone, type);
+            } else {
+                if (existing) {
+                    await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" already exists. Use $:editBday to modify it, or $:removeBday to delete it first.`);
+                    return;
+                }
+                birthdayRepository.add(name, date, phone, type);
+            }
             const action = cmd === 'editBday' ? 'updated' : 'added';
             await this.whatsappService.sendMessage(chatId, `Birthday ${action} successfully for ${name} (${date})`);
         } catch (err) {
@@ -196,34 +212,12 @@ class CommandService {
             return;
         }
 
-        const configFile = path.join(__dirname, '../../config.json');
-        let config = {};
-        let birthdays = [];
-
-        try {
-            config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
-            birthdays = config.birthdays || [];
-        } catch (err) {
-            await this.whatsappService.sendMessage(chatId, 'Failed to read config file.');
-            return;
-        }
-
-        const initialLength = birthdays.length;
-        birthdays = birthdays.filter(b => b.name.toLowerCase() !== name.toLowerCase());
-
-        if (birthdays.length === initialLength) {
+        const removed = birthdayRepository.remove(name);
+        if (!removed) {
             await this.whatsappService.sendMessage(chatId, `Birthday for "${name}" not found.`);
             return;
         }
-
-        try {
-            config.birthdays = birthdays;
-            fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
-            await this.whatsappService.sendMessage(chatId, `Birthday removed successfully for ${name}.`);
-        } catch (err) {
-            logger.error('Failed to save birthdays', err);
-            await this.whatsappService.sendMessage(chatId, 'Failed to save changes.');
-        }
+        await this.whatsappService.sendMessage(chatId, `Birthday removed successfully for ${name}.`);
     }
 
     async handleListBirthdays(chatId) {
@@ -252,6 +246,40 @@ class CommandService {
         });
 
         await this.whatsappService.sendMessage(chatId, message);
+    }
+
+    async handleExportBirthdays(chatId) {
+        try {
+            const json = birthdayRepository.exportJSON();
+            const file = path.join(__dirname, '../../birthdays.json');
+            fs.writeFileSync(file, json, 'utf8');
+            const count = birthdayRepository.getAll().length;
+            await this.whatsappService.sendMessage(chatId, `Exported ${count} birthdays to birthdays.json`);
+        } catch (err) {
+            logger.error('Failed to export birthdays', err);
+            await this.whatsappService.sendMessage(chatId, 'Failed to export birthdays.');
+        }
+    }
+
+    async handleImportBirthdays(args, chatId) {
+        let filename = 'birthdays.json';
+        for (let i = 0; i < args.length; i++) {
+            if (args[i] === '--file' && args[i + 1]) {
+                filename = args[i + 1];
+                break;
+            }
+        }
+        const file = path.join(__dirname, '../../', filename);
+        try {
+            const raw = fs.readFileSync(file, 'utf8');
+            const data = JSON.parse(raw);
+            const entries = Array.isArray(data) ? data : (data.birthdays || []);
+            const count = birthdayRepository.importJSON(entries);
+            await this.whatsappService.sendMessage(chatId, `Imported ${count} birthdays from ${filename}`);
+        } catch (err) {
+            logger.error('Failed to import birthdays', err);
+            await this.whatsappService.sendMessage(chatId, `Failed to import birthdays from ${filename}: ${err.message}`);
+        }
     }
 
     async handleSetCron(args, chatId) {

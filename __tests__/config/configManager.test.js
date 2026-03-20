@@ -8,6 +8,8 @@ const cron = require('node-cron');
 
 const logger = require('../../src/utils/logger');
 
+let mockBirthdayRepository;
+
 describe('ConfigManager', () => {
     let ConfigManager;
     let configManager;
@@ -15,6 +17,17 @@ describe('ConfigManager', () => {
     beforeEach(() => {
         // Clear all mocks
         jest.clearAllMocks();
+
+        // Fresh birthday repository mock
+        mockBirthdayRepository = {
+            getAll: jest.fn().mockReturnValue([]),
+            getByName: jest.fn().mockReturnValue(null),
+            add: jest.fn(),
+            update: jest.fn(),
+            remove: jest.fn().mockReturnValue(false),
+            exportJSON: jest.fn().mockReturnValue('{}'),
+            importJSON: jest.fn().mockReturnValue(0),
+        };
 
         // Spy on logger methods
         spyOn(logger, 'info').mockImplementation(() => {});
@@ -27,6 +40,17 @@ describe('ConfigManager', () => {
         spyOn(fs, 'existsSync').mockReturnValue(false);
         spyOn(fs, 'readFileSync').mockReturnValue('');
         spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+
+        // Inject birthdayRepository mock so configManager doesn't open SQLite
+        const repoPath = require.resolve('../../src/config/birthdayRepository');
+        require.cache[repoPath] = {
+            id: repoPath,
+            filename: repoPath,
+            loaded: true,
+            exports: mockBirthdayRepository,
+            children: [],
+            paths: module.paths,
+        };
 
         // Re-require the module to get a fresh instance (replaces jest.isolateModules)
         delete require.cache[require.resolve('../../src/config/configManager')];
@@ -51,7 +75,6 @@ describe('ConfigManager', () => {
             openaiApiKey: "",
             yourPhoneNumber: "",
             botOwner: "John",
-            birthdays: []
         };
 
         test('should return default config when file does not exist', () => {
@@ -120,63 +143,25 @@ describe('ConfigManager', () => {
     });
 
     describe('loadBirthdays', () => {
-        test('should return empty array when config file does not exist', () => {
-            fs.existsSync.mockReturnValue(false);
-
-            const result = configManager.loadBirthdays();
-
-            expect(result).toEqual([]);
-        });
-
-        test('should return empty array when config has no birthdays', () => {
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify({}));
-
-            const result = configManager.loadBirthdays();
-
-            expect(result).toEqual([]);
-        });
-
-        test('should load birthdays from config.birthdays when it exists', () => {
+        test('should delegate to birthdayRepository.getAll', () => {
             const mockBirthdays = [
                 { name: 'John Doe', date: '01-01', phone: '+1111111111', type: 'generated' },
                 { name: 'Jane Smith', date: '02-02', phone: '+2222222222', type: 'personal' }
             ];
-
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays: mockBirthdays }));
+            mockBirthdayRepository.getAll.mockReturnValue(mockBirthdays);
 
             const result = configManager.loadBirthdays();
 
+            expect(mockBirthdayRepository.getAll).toHaveBeenCalledTimes(1);
             expect(result).toEqual(mockBirthdays);
         });
 
-        test('should strip spaces from phone numbers in birthdays', () => {
-            const birthdays = [
-                { name: "Test", phone: "+1 234 567 890" },
-                { name: "Test2", phone: "+9 876 543 210" }
-            ];
-
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays }));
+        test('should return empty array when no birthdays exist', () => {
+            mockBirthdayRepository.getAll.mockReturnValue([]);
 
             const result = configManager.loadBirthdays();
 
-            expect(result[0].phone).toBe("+1234567890");
-            expect(result[1].phone).toBe("+9876543210");
-        });
-
-        test('should handle birthdays without phone numbers', () => {
-            const birthdays = [
-                { name: "Test" }
-            ];
-
-            fs.existsSync.mockReturnValue(true);
-            fs.readFileSync.mockReturnValue(JSON.stringify({ birthdays }));
-
-            const result = configManager.loadBirthdays();
-
-            expect(result[0].phone).toBeUndefined();
+            expect(result).toEqual([]);
         });
     });
 
@@ -199,20 +184,14 @@ describe('ConfigManager', () => {
     });
 
     describe('getBirthdays', () => {
-        test('should call loadBirthdays and return fresh birthdays', () => {
+        test('should call birthdayRepository.getAll and return result', () => {
             const mockBirthdays = [{ name: 'Test', date: '01-01' }];
-            
-            // Mock loadBirthdays method
-            const originalLoadBirthdays = configManager.loadBirthdays;
-            configManager.loadBirthdays = jest.fn().mockReturnValue(mockBirthdays);
+            mockBirthdayRepository.getAll.mockReturnValue(mockBirthdays);
 
             const result = configManager.getBirthdays();
 
-            expect(configManager.loadBirthdays).toHaveBeenCalled();
+            expect(mockBirthdayRepository.getAll).toHaveBeenCalled();
             expect(result).toEqual(mockBirthdays);
-
-            // Restore original method
-            configManager.loadBirthdays = originalLoadBirthdays;
         });
     });
 

@@ -61,11 +61,12 @@ class BirthdayBot {
             if (whatsappService.isReady) {
                 // Start the birthday checking service
                 birthdayService.startBirthdayChecker();
-                // Start the command service polling for personal chat commands
+                // Start command service polling — await the seed so lastCheckedMessageId
+                // is set before sendTestMessage fires, preventing old commands re-executing.
                 if (!this.commandService) {
                     this.commandService = new CommandService(whatsappService, birthdayService);
                     const personalChatId = configManager.getConfig().yourPhoneNumber;
-                    this.commandService.startPolling(personalChatId);
+                    await this.commandService.startPolling(personalChatId);
                 }
             } else {
                 // Check again in 1 second

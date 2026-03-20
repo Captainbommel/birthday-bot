@@ -106,6 +106,9 @@ Desktop.ini
 birthdays.json
 history.json
 config.json
+
+# SQLite database (runtime data, contains personal info)
+bot.db
 minions/*
 *.tar.gz
 

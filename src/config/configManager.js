@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 const logger = require('../utils/logger');
+const birthdayRepository = require('./birthdayRepository');
 
 class ConfigManager {
     constructor() {
@@ -15,7 +16,6 @@ class ConfigManager {
             openaiApiKey: "",
             yourPhoneNumber: "",
             botOwner: "John",
-            birthdays: []
         };
 
         if (fs.existsSync(this.CONFIG_FILE)) {
@@ -40,15 +40,7 @@ class ConfigManager {
     }
 
     loadBirthdays() {
-        const config = this.loadConfig();
-        const birthdays = config.birthdays || [];
-        // Strip spaces from phone numbers
-        return birthdays.map(birthday => {
-            if (birthday.phone) {
-                birthday.phone = birthday.phone.replace(/\s+/g, '');
-            }
-            return birthday;
-        });
+        return birthdayRepository.getAll();
     }
 
     getConfig() {
@@ -57,8 +49,8 @@ class ConfigManager {
     }
 
     getBirthdays() {
-        // Always load fresh birthdays to allow runtime changes
-        return this.loadBirthdays();
+        // Always fetch fresh birthdays from the database
+        return birthdayRepository.getAll();
     }
 
     validateConfig() {

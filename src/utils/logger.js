@@ -1,10 +1,19 @@
 const moment = require('moment-timezone');
-const fs = require('fs');
-const path = require('path');
+const db = require('../config/database');
 
 class Logger {
     constructor() {
-        this.LOG_FILE = path.join(__dirname, '../../bot.log');
+        db.run(`
+            CREATE TABLE IF NOT EXISTS logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                level TEXT NOT NULL,
+                message TEXT NOT NULL
+            )
+        `);
+        this._insert = db.prepare(
+            'INSERT INTO logs (timestamp, level, message) VALUES (?, ?, ?)'
+        );
     }
 
     log(message, level = 'INFO') {
@@ -13,11 +22,10 @@ class Logger {
         
         console.log(logMessage);
         
-        // Append to log file
         try {
-            fs.appendFileSync(this.LOG_FILE, logMessage + '\n');
+            this._insert.run(timestamp, level, message);
         } catch (error) {
-            console.error('Failed to write to log file:', error.message);
+            console.error('Failed to write to database:', error.message);
         }
     }
 

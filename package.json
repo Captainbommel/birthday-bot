@@ -7,9 +7,9 @@
   "scripts": {
     "start": "bun index.js",
     "dev": "bun index.js",
-    "clean": "rm -rf .wwebjs_auth .wwebjs_cache bot.log",
+    "clean": "rm -rf .wwebjs_auth .wwebjs_cache bot.db bot.log history.json.migrated",
     "clean-start": "bun run clean && bun run start",
-    "logs": "type bot.log",
+    "logs": "bun --eval \"const {Database}=require('bun:sqlite');const db=new Database('bot.db');db.query('SELECT * FROM logs ORDER BY id').all().forEach(r=>console.log(`[${r.timestamp}] [${r.level}] ${r.message}`))\"",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage"
