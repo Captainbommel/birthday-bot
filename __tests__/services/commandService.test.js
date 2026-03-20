@@ -1,8 +1,8 @@
-// Mock external modules
-jest.mock('../../src/utils/logger', () => require('../__mocks__/logger'));
-jest.mock('../../src/config/configManager', () => require('../__mocks__/configManager'));
-jest.mock('fs');
-jest.mock('node-cron');
+const { jest, mock, spyOn, describe, test, expect, beforeEach, afterEach } = require('bun:test');
+
+mock.module('../../src/config/configManager', () => require('../__mocks__/configManager'));
+mock.module('fs', () => ({ existsSync: jest.fn(), readFileSync: jest.fn(), writeFileSync: jest.fn() }));
+mock.module('node-cron', () => ({ schedule: jest.fn(), validate: jest.fn() }));
 
 const fs = require('fs');
 const cron = require('node-cron');
@@ -19,7 +19,10 @@ describe('CommandService', () => {
     beforeEach(() => {
         // Reset all mocks
         jest.clearAllMocks();
-        logger.resetMocks();
+        spyOn(logger, 'info').mockImplementation(() => {});
+        spyOn(logger, 'warn').mockImplementation(() => {});
+        spyOn(logger, 'error').mockImplementation(() => {});
+        spyOn(logger, 'debug').mockImplementation(() => {});
         configManager.resetMocks();
 
         mockChatId = '+1234567890';
@@ -45,6 +48,10 @@ describe('CommandService', () => {
         cron.validate = jest.fn().mockReturnValue(true);
 
         commandService = new CommandService(mockWhatsappService, mockBirthdayService);
+    });
+
+    afterEach(() => {
+        mock.restore();
     });
 
     describe('Constructor', () => {

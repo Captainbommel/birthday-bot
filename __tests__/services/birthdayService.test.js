@@ -1,26 +1,43 @@
-const moment = require('moment-timezone');
+const { jest, mock, spyOn, describe, test, expect, beforeEach, afterEach } = require('bun:test');
 
-// Mock external modules
-jest.mock('moment-timezone');
-jest.mock('node-cron');
-jest.mock('cron-parser');
-jest.mock('fs');
+// Create moment-timezone mock at module scope
+const momentMock = jest.fn();
+momentMock.tz = jest.fn();
 
-// Mock our internal services using the mock files
-jest.mock('../../src/utils/logger', () => require('../__mocks__/logger'));
-jest.mock('../../src/config/configManager', () => require('../__mocks__/configManager'));
-jest.mock('../../src/services/whatsappService', () => require('../__mocks__/whatsappService'));
-jest.mock('../../src/services/aiMessageService', () => require('../__mocks__/aiMessageService'));
-jest.mock('../../src/services/historyService', () => ({
-    hasSentMessage: jest.fn().mockReturnValue(false),
-    markAsSent: jest.fn(),
-    loadHistory: jest.fn(),
-    saveHistory: jest.fn()
-}));
+// Patch require.cache directly so CJS require('moment-timezone') gets the mock function
+require('moment-timezone');
+require.cache[require.resolve('moment-timezone')].exports = momentMock;
+mock.module('node-cron', () => ({ schedule: jest.fn(), validate: jest.fn() }));
+mock.module('cron-parser', () => ({ CronExpressionParser: { parse: jest.fn() } }));
+mock.module('../../src/config/configManager', () => require('../__mocks__/configManager'));
+mock.module('../../src/services/aiMessageService', () => require('../__mocks__/aiMessageService'));
+
+// Inject whatsappService mock directly into require.cache instead of using mock.module.
+// mock.module() registers a PROCESS-WIDE hook that persists and contaminates
+// whatsappService.test.js (which needs to load the real service). Direct cache injection
+// avoids the global mock registry while still providing the mock to BirthdayService.
+{
+    const _wsMockPath = require.resolve('../../src/services/whatsappService');
+    const _wsMock = require('../__mocks__/whatsappService');
+    require.cache[_wsMockPath] = { id: _wsMockPath, filename: _wsMockPath, loaded: true, exports: _wsMock, children: [], paths: module.paths };
+}
+
+// Same approach for historyService to avoid contaminating historyService.test.js.
+{
+    const _hsMockPath = require.resolve('../../src/services/historyService');
+    const _hsMock = {
+        hasSentMessage: jest.fn().mockReturnValue(false),
+        markAsSent: jest.fn(),
+        loadHistory: jest.fn(),
+        saveHistory: jest.fn()
+    };
+    require.cache[_hsMockPath] = { id: _hsMockPath, filename: _hsMockPath, loaded: true, exports: _hsMock, children: [], paths: module.paths };
+}
 
 const cron = require('node-cron');
 const parser = require('cron-parser');
 const fs = require('fs');
+const path = require('path');
 const logger = require('../../src/utils/logger');
 const configManager = require('../../src/config/configManager');
 const whatsappService = require('../../src/services/whatsappService');
@@ -38,7 +55,10 @@ describe('BirthdayService', () => {
     beforeEach(() => {
         // Reset all mocks
         jest.clearAllMocks();
-        logger.resetMocks();
+        spyOn(logger, 'info').mockImplementation(() => {});
+        spyOn(logger, 'warn').mockImplementation(() => {});
+        spyOn(logger, 'error').mockImplementation(() => {});
+        spyOn(logger, 'debug').mockImplementation(() => {});
         configManager.resetMocks();
         whatsappService.resetMocks();
         aiMessageService.resetMocks();
@@ -83,8 +103,8 @@ describe('BirthdayService', () => {
             isSameOrBefore: jest.fn().mockReturnValue(false)
         };
 
-        moment.mockReturnValue(mockMoment);
-        moment.tz = jest.fn().mockReturnValue(mockMoment);
+        momentMock.mockReturnValue(mockMoment);
+        momentMock.tz.mockReturnValue(mockMoment);
 
         // Setup cron mock
         mockCronJob = {
@@ -93,23 +113,27 @@ describe('BirthdayService', () => {
         };
         cron.schedule = jest.fn().mockReturnValue(mockCronJob);
 
-        // Setup parser mock
+        // Setup parser mock — modify .parse on the existing CronExpressionParser object
+        // (top-level mock.module exports may be non-reassignable; mutate the sub-object instead)
         const mockParserInterval = {
             next: jest.fn().mockReturnValue({
                 toDate: jest.fn().mockReturnValue(new Date('2025-10-08T08:00:00Z'))
             })
         };
-        parser.CronExpressionParser = {
-            parse: jest.fn().mockReturnValue(mockParserInterval)
-        };
+        parser.CronExpressionParser.parse = jest.fn().mockReturnValue(mockParserInterval);
 
         // Setup interval mock
         mockInterval = {};
         global.setInterval = jest.fn().mockReturnValue(mockInterval);
         global.clearInterval = jest.fn();
+
+        // Spy on fs for tests that check minion image sending
+        spyOn(fs, 'existsSync').mockReturnValue(false);
+        spyOn(fs, 'readdirSync').mockReturnValue([]);
     });
 
     afterEach(() => {
+        mock.restore();
         BirthdayService.stopBirthdayChecker();
     });
 
@@ -222,7 +246,10 @@ describe('BirthdayService', () => {
             BirthdayService.startBirthdayChecker();
             
             // Clear previous calls to logger
-            logger.resetMocks();
+            logger.info.mockClear();
+            logger.warn.mockClear();
+            logger.error.mockClear();
+            logger.debug.mockClear();
             
             // Change the config
             configManager.setMockConfig({ cronSchedule: '0 10 * * *', timezone: 'Europe/Berlin' });
@@ -457,8 +484,7 @@ describe('BirthdayService', () => {
 
             // Mock moment to return different dates for each iteration
             let dayCounter = 0;
-            const originalMoment = moment;
-            moment.mockImplementation(() => ({
+            momentMock.mockImplementation(() => ({
                 tz: function() { return this; },
                 clone: () => ({
                     add: (days) => ({
@@ -488,7 +514,7 @@ describe('BirthdayService', () => {
             ]);
 
             // Mock moment for this test
-            moment.mockImplementation(() => ({
+            momentMock.mockImplementation(() => ({
                 tz: function() { return this; },
                 clone: () => ({
                     add: (days) => ({
@@ -516,7 +542,7 @@ describe('BirthdayService', () => {
             configManager.setMockBirthdays(birthdays);
 
             // Mock moment for this test
-            moment.mockImplementation(() => ({
+            momentMock.mockImplementation(() => ({
                 tz: function() { return this; },
                 clone: () => ({
                     add: (days) => ({

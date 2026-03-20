@@ -1,11 +1,15 @@
-const moment = require('moment');
+const { jest, mock, spyOn, describe, test, expect, beforeEach, afterEach } = require('bun:test');
+
+// Create moment mock at module scope
+const moment = jest.fn();
+
+// Patch require.cache directly so CJS require('moment') gets the mock function
+// (mock.module creates an ESM namespace which CJS sees as Module object, not callable)
+require('moment');
+require.cache[require.resolve('moment')].exports = moment;
+
 const fs = require('fs');
 const path = require('path');
-
-// Mock external modules
-jest.mock('moment');
-jest.mock('fs');
-jest.mock('path');
 
 describe('Logger', () => {
     let Logger;
@@ -17,9 +21,10 @@ describe('Logger', () => {
     beforeEach(() => {
         // Clear all mocks
         jest.clearAllMocks();
-        
-        // Mock path.join to return predictable path
-        path.join.mockReturnValue(mockLogPath);
+
+        // Spy on Node built-ins (mock.module does not intercept them)
+        spyOn(path, 'join').mockReturnValue(mockLogPath);
+        spyOn(fs, 'appendFileSync').mockImplementation(() => {});
         
         // Mock moment to return consistent timestamp
         const mockMoment = {
@@ -32,16 +37,14 @@ describe('Logger', () => {
         jest.spyOn(console, 'error').mockImplementation(() => {});
         
         // Re-require the module to get a fresh instance
-        jest.isolateModules(() => {
-            Logger = require('../../src/utils/logger');
-            logger = Logger;
-        });
+        delete require.cache[require.resolve('../../src/utils/logger')];
+        Logger = require('../../src/utils/logger');
+        logger = Logger;
     });
 
     afterEach(() => {
-        // Restore console methods
-        console.log.mockRestore();
-        console.error.mockRestore();
+        // Restore all spies (console, path, fs)
+        mock.restore();
     });
 
     describe('constructor', () => {

@@ -1,4 +1,5 @@
 // Mock for whatsapp-web.js
+const { mock, jest } = require('bun:test');
 const EventEmitter = require('events');
 
 class MockClient extends EventEmitter {

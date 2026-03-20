@@ -1,10 +1,14 @@
 // Mock for configManager
-const mockConfig = {
+const { mock } = require('bun:test');
+
+const defaultConfig = {
     cronSchedule: '0 8 * * *',
     timezone: 'Europe/Berlin',
     openaiApiKey: 'test-key',
     yourPhoneNumber: '+1234567890'
 };
+
+const mockConfig = { ...defaultConfig };
 
 const mockBirthdays = [
     {
@@ -28,10 +32,10 @@ const mockBirthdays = [
 ];
 
 const configManager = {
-    getConfig: jest.fn(() => mockConfig),
-    getBirthdays: jest.fn(() => mockBirthdays),
-    loadConfig: jest.fn(() => mockConfig),
-    loadBirthdays: jest.fn(() => mockBirthdays),
+    getConfig: mock(() => mockConfig),
+    getBirthdays: mock(() => mockBirthdays),
+    loadConfig: mock(() => mockConfig),
+    loadBirthdays: mock(() => mockBirthdays),
     // Helper methods for tests
     setMockConfig: (newConfig) => {
         Object.assign(mockConfig, newConfig);
@@ -41,6 +45,9 @@ const configManager = {
         mockBirthdays.push(...newBirthdays);
     },
     resetMocks: () => {
+        // Reset mockConfig back to defaults (remove extra keys, restore default values)
+        Object.keys(mockConfig).forEach(key => delete mockConfig[key]);
+        Object.assign(mockConfig, defaultConfig);
         configManager.getConfig.mockClear();
         configManager.getBirthdays.mockClear();
         configManager.loadConfig.mockClear();

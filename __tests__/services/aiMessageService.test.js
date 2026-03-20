@@ -1,31 +1,28 @@
-// Mock external modules
-jest.mock('openai');
+const { jest, mock, spyOn, describe, test, expect, beforeEach, afterEach } = require('bun:test');
 
-// Mock our internal services using the existing mock files
-jest.mock('../../src/utils/logger', () => require('../__mocks__/logger'));
-jest.mock('../../src/config/configManager', () => require('../__mocks__/configManager'));
+mock.module('openai', () => require('../__mocks__/openai'));
+mock.module('../../src/config/configManager', () => require('../__mocks__/configManager'));
 
 const OpenAI = require('openai');
-// We'll require these dynamically in beforeEach to handle module resetting
-let logger;
-let configManager;
-
-// We need to create a fresh instance for each test since it's a singleton
-let AIMessageService;
+const logger = require('../../src/utils/logger');
+const configManager = require('../../src/config/configManager');
+const AIMessageService = require('../../src/services/aiMessageService');
 
 describe('AIMessageService', () => {
     beforeEach(() => {
-        // Reset the module cache to get a fresh instance
-        jest.resetModules();
-
-        // Re-require mocks to ensure we have the same instances as the service
-        logger = require('../../src/utils/logger');
-        configManager = require('../../src/config/configManager');
-
         // Reset all mocks
         jest.clearAllMocks();
-        logger.resetMocks();
+        spyOn(logger, 'info').mockImplementation(() => {});
+        spyOn(logger, 'warn').mockImplementation(() => {});
+        spyOn(logger, 'error').mockImplementation(() => {});
+        spyOn(logger, 'debug').mockImplementation(() => {});
         configManager.resetMocks();
+        // Reset singleton state so each test can re-initialize with different config
+        AIMessageService.openai = null;
+    });
+
+    afterEach(() => {
+        mock.restore();
     });
 
     describe('initialization', () => {
@@ -33,7 +30,7 @@ describe('AIMessageService', () => {
             const configWithKey = { openaiApiKey: 'test-api-key-123' };
             configManager.setMockConfig(configWithKey);
             
-            AIMessageService = require('../../src/services/aiMessageService');
+            AIMessageService.initialize();
             
             expect(AIMessageService.openai).toBeDefined();
         });
@@ -42,7 +39,7 @@ describe('AIMessageService', () => {
             const configWithoutKey = { openaiApiKey: '' };
             configManager.setMockConfig(configWithoutKey);
             
-            AIMessageService = require('../../src/services/aiMessageService');
+            AIMessageService.initialize();
             
             // Since it's a singleton and may have been initialized already,
             // we test the behavior rather than the internal state
@@ -54,7 +51,7 @@ describe('AIMessageService', () => {
             const configWithUndefinedKey = {};
             configManager.setMockConfig(configWithUndefinedKey);
             
-            AIMessageService = require('../../src/services/aiMessageService');
+            AIMessageService.initialize();
             
             // Test that the service can be initialized without crashing
             expect(AIMessageService).toBeDefined();
@@ -65,7 +62,17 @@ describe('AIMessageService', () => {
         describe('with OpenAI configured', () => {
             beforeEach(() => {
                 configManager.setMockConfig({ openaiApiKey: 'test-key' });
-                AIMessageService = require('../../src/services/aiMessageService');
+                AIMessageService.initialize();
+                // Directly mock the openai instance (bypasses constructor mock interception issues)
+                AIMessageService.openai = {
+                    chat: {
+                        completions: {
+                            create: jest.fn().mockResolvedValue({
+                                choices: [{ message: { content: "Wieder ein Jahr \u00e4lter und immer noch genauso ver\u00fcckt! \uD83D\uDE04" } }]
+                            })
+                        }
+                    }
+                };
             });
 
             test('should generate AI birthday message successfully', async () => {
@@ -222,7 +229,7 @@ describe('AIMessageService', () => {
         describe('without OpenAI configured', () => {
             beforeEach(() => {
                 configManager.setMockConfig({ openaiApiKey: '' });
-                AIMessageService = require('../../src/services/aiMessageService');
+                AIMessageService.initialize();
             });
 
             test('should use default message when OpenAI not configured', async () => {
@@ -240,7 +247,8 @@ describe('AIMessageService', () => {
             test('should not attempt to call OpenAI API', async () => {
                 await AIMessageService.generateBirthdayMessage('NoAPITest');
 
-                expect(OpenAI).not.toHaveBeenCalled();
+                // openai should be null when no API key is configured
+                expect(AIMessageService.openai).toBeNull();
             });
         });
     });
@@ -248,7 +256,13 @@ describe('AIMessageService', () => {
     describe('generatePersonalReminderMessage', () => {
         beforeEach(() => {
             configManager.setMockConfig({ openaiApiKey: 'test-key' });
-            AIMessageService = require('../../src/services/aiMessageService');
+            AIMessageService.initialize();
+            // Directly mock the openai instance
+            AIMessageService.openai = {
+                chat: { completions: { create: jest.fn().mockResolvedValue({
+                    choices: [{ message: { content: 'default response' } }]
+                }) } }
+            };
         });
 
         test('should generate personal reminder message', async () => {
@@ -270,24 +284,24 @@ describe('AIMessageService', () => {
         });
 
         test('should not call OpenAI API for personal reminders', async () => {
-            configManager.setMockConfig({ openaiApiKey: 'test-key' });
-            jest.resetModules();
-            AIMessageService = require('../../src/services/aiMessageService');
-
+            // Personal reminders don't use the chat.completions.create endpoint
+            const createMock = AIMessageService.openai.chat.completions.create;
             await AIMessageService.generatePersonalReminderMessage('TestName');
-
-            // OpenAI might be called during initialization, but not for personal reminders
-            // The personal reminder method doesn't use AI, so no additional calls should be made
-            const initialCallCount = OpenAI.mock.calls.length;
             await AIMessageService.generatePersonalReminderMessage('TestName2');
-            expect(OpenAI.mock.calls.length).toBe(initialCallCount);
+            expect(createMock).not.toHaveBeenCalled();
         });
     });
 
     describe('generateTestMessage', () => {
         beforeEach(() => {
             configManager.setMockConfig({ openaiApiKey: 'test-key' });
-            AIMessageService = require('../../src/services/aiMessageService');
+            AIMessageService.initialize();
+            // Directly mock the openai instance
+            AIMessageService.openai = {
+                chat: { completions: { create: jest.fn().mockResolvedValue({
+                    choices: [{ message: { content: 'default response' } }]
+                }) } }
+            };
         });
 
         test('should generate test message with timestamp', async () => {
@@ -320,16 +334,13 @@ describe('AIMessageService', () => {
         });
 
         test('should not call OpenAI API for test messages', async () => {
-            configManager.setMockConfig({ openaiApiKey: 'test-key' });
-            jest.resetModules();
-            AIMessageService = require('../../src/services/aiMessageService');
-
-            // Clear any initialization calls
-            OpenAI.mockClear();
+            // Test messages don't use the chat.completions.create endpoint
+            const createMock = AIMessageService.openai.chat.completions.create;
+            createMock.mockClear();
 
             await AIMessageService.generateTestMessage();
 
-            expect(OpenAI).not.toHaveBeenCalled();
+            expect(createMock).not.toHaveBeenCalled();
         });
 
         test('should use German timezone formatting', async () => {
@@ -350,14 +361,12 @@ describe('AIMessageService', () => {
     describe('error handling and edge cases', () => {
         beforeEach(() => {
             configManager.setMockConfig({ openaiApiKey: '' });
-            AIMessageService = require('../../src/services/aiMessageService');
+            AIMessageService.initialize();
         });
 
         test('should handle special characters in names', async () => {
             const specialNames = ['Müller', 'José', 'François', 'Øystein'];
-            configManager.setMockConfig({ openaiApiKey: '' }); // Use default messages
-            jest.resetModules();
-            AIMessageService = require('../../src/services/aiMessageService');
+            // Inner beforeEach already initialized with openaiApiKey: '' (uses default messages)
 
             for (const name of specialNames) {
                 const result = await AIMessageService.generateBirthdayMessage(name);
@@ -370,7 +379,7 @@ describe('AIMessageService', () => {
     describe('message format consistency', () => {
         beforeEach(() => {
             configManager.setMockConfig({ openaiApiKey: '' });
-            AIMessageService = require('../../src/services/aiMessageService');
+            AIMessageService.initialize();
         });
 
         test('all message types should end with bot signature', async () => {
@@ -386,10 +395,7 @@ describe('AIMessageService', () => {
         });
 
         test('birthday messages should always contain birthday greeting', async () => {
-            configManager.setMockConfig({ openaiApiKey: '' });
-            jest.resetModules();
-            AIMessageService = require('../../src/services/aiMessageService');
-
+            // Inner beforeEach already initialized with openaiApiKey: ''
             const result = await AIMessageService.generateBirthdayMessage('GreetingTest');
 
             expect(result).toContain('🎉 Alles Gute zum Geburtstag, GreetingTest! 🎂');

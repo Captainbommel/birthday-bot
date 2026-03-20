@@ -1,12 +1,10 @@
+const { jest, mock, spyOn, describe, test, expect, beforeEach, afterEach } = require('bun:test');
+
+mock.module('node-cron', () => ({ schedule: jest.fn(), validate: jest.fn() }));
+
 const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
-
-// Mock external modules
-jest.mock('fs');
-jest.mock('path');
-jest.mock('node-cron');
-jest.mock('../../src/utils/logger', () => require('../__mocks__/logger'));
 
 const logger = require('../../src/utils/logger');
 
@@ -17,12 +15,27 @@ describe('ConfigManager', () => {
     beforeEach(() => {
         // Clear all mocks
         jest.clearAllMocks();
-        
-        // Re-require the module to get a fresh instance
-        jest.isolateModules(() => {
-            ConfigManager = require('../../src/config/configManager');
-            configManager = ConfigManager;
-        });
+
+        // Spy on logger methods
+        spyOn(logger, 'info').mockImplementation(() => {});
+        spyOn(logger, 'warn').mockImplementation(() => {});
+        spyOn(logger, 'error').mockImplementation(() => {});
+        spyOn(logger, 'debug').mockImplementation(() => {});
+
+        // Spy on Node built-ins before re-requiring ConfigManager
+        spyOn(path, 'join');
+        spyOn(fs, 'existsSync').mockReturnValue(false);
+        spyOn(fs, 'readFileSync').mockReturnValue('');
+        spyOn(fs, 'writeFileSync').mockImplementation(() => {});
+
+        // Re-require the module to get a fresh instance (replaces jest.isolateModules)
+        delete require.cache[require.resolve('../../src/config/configManager')];
+        ConfigManager = require('../../src/config/configManager');
+        configManager = ConfigManager;
+    });
+
+    afterEach(() => {
+        mock.restore();
     });
 
     describe('constructor', () => {
@@ -225,6 +238,9 @@ describe('ConfigManager', () => {
         beforeEach(() => {
             // Mock getConfig method
             configManager.getConfig = jest.fn();
+            // Re-create cron.validate as fresh jest.fn() since mock.module factory's
+            // jest.fn() may lose mock API after jest.clearAllMocks()
+            cron.validate = jest.fn().mockReturnValue(true);
         });
 
         test('should return true when config is valid with no warnings', () => {

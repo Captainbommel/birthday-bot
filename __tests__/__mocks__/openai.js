@@ -1,7 +1,9 @@
 // Mock for OpenAI API
-const MockOpenAI = jest.fn().mockImplementation((config) => {
+const { mock, jest } = require('bun:test');
+
+const MockOpenAI = mock((config) => {
     const mockChatCompletions = jest.fn();
-    
+
     // Default successful response
     const defaultResponse = {
         choices: [{

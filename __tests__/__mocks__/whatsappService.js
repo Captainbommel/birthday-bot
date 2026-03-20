@@ -1,8 +1,10 @@
 // Mock for whatsappService
+const { mock } = require('bun:test');
+
 const whatsappService = {
-    sendMessage: jest.fn(() => Promise.resolve('Message sent successfully')),
-    sendImage: jest.fn(() => Promise.resolve('Image sent successfully')),
-    isReady: jest.fn(() => true),
+    sendMessage: mock(() => Promise.resolve('Message sent successfully')),
+    sendImage: mock(() => Promise.resolve('Image sent successfully')),
+    isReady: mock(() => true),
     // Helper methods for tests
     resetMocks: () => {
         whatsappService.sendMessage.mockReset();

@@ -1,9 +1,11 @@
 // Mock for logger
+const { mock } = require('bun:test');
+
 const logger = {
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    debug: jest.fn(),
+    info: mock(),
+    warn: mock(),
+    error: mock(),
+    debug: mock(),
     // Helper methods for tests
     resetMocks: () => {
         logger.info.mockClear();

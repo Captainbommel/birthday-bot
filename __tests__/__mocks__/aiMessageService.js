@@ -1,9 +1,11 @@
 // Mock for aiMessageService
+const { mock } = require('bun:test');
+
 const aiMessageService = {
-    generateBirthdayMessage: jest.fn((name) => 
+    generateBirthdayMessage: mock((name) =>
         Promise.resolve(`Happy Birthday ${name}! 🎉 Wishing you all the best on your special day!`)
     ),
-    generatePersonalReminderMessage: jest.fn((name) => 
+    generatePersonalReminderMessage: mock((name) =>
         Promise.resolve(`Reminder: It's ${name}'s birthday today! Don't forget to wish them well.`)
     ),
     // Helper methods for tests

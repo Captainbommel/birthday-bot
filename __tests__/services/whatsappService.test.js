@@ -1,85 +1,102 @@
+const { mock, jest, spyOn, describe, test, expect, beforeEach, afterEach } = require('bun:test');
+
+// Shared mutable mock state — created once, reset between tests
+const mockConfig = {
+    getConfig: jest.fn(() => ({ yourPhoneNumber: '+1234567890' }))
+};
+
+const mockAI = {
+    generateTestMessage: jest.fn().mockResolvedValue('Test message')
+};
+
+const mockQRCode = {
+    generate: jest.fn()
+};
+
+const mockClient = {
+    initialize: jest.fn().mockResolvedValue(undefined),
+    getChatById: jest.fn().mockResolvedValue({
+        id: { user: 'test' },
+        sendMessage: jest.fn().mockResolvedValue({ id: 'msg123' })
+    }),
+    destroy: jest.fn(),
+    on: jest.fn(),
+    listenerCount: jest.fn(() => 1),
+    _listeners: {},
+    _addListener: function(event, callback) {
+        if (!this._listeners[event]) this._listeners[event] = [];
+        this._listeners[event].push(callback);
+    },
+    _emit: function(event, ...args) {
+        if (this._listeners[event]) {
+            this._listeners[event].forEach(callback => callback(...args));
+        }
+    }
+};
+
+// Register module mocks BEFORE requiring the service under test
+mock.module('whatsapp-web.js', () => ({
+    Client: jest.fn(() => mockClient),
+    LocalAuth: jest.fn(() => ({ clientId: 'birthday-bot' })),
+    MessageMedia: {
+        fromFilePath: jest.fn().mockReturnValue({ mimetype: 'image/jpeg', data: 'base64data' })
+    }
+}));
+mock.module('qrcode-terminal', () => mockQRCode);
+mock.module('../../src/config/configManager', () => mockConfig);
+mock.module('../../src/services/aiMessageService', () => mockAI);
+
+// Load the real logger so we can spy on it
+const logger = require('../../src/utils/logger');
+
+// Trigger module load at file scope so require.cache is populated (even if birthdayService's
+// mock.module returns a mock here — that's fine). During test execution, delete+require
+// bypasses Bun's mock.module registry and loads the real file from disk.
+require('../../src/services/whatsappService');
+
+let WhatsAppService;
+
 describe('WhatsAppService', () => {
-    let WhatsAppService;
-    let mockClient;
-    let mockLogger;
-    let mockConfig;
-    let mockAI;
-    let mockQRCode;
-
     beforeEach(() => {
-        // Clear everything first
-        jest.clearAllMocks();
-        jest.resetModules();
-        jest.clearAllTimers();
+        // Load the real service: delete cached entry then re-require.
+        // At test-execution time, require() falls back to the file system rather than
+        // Bun's mock.module registry, so we get the genuine implementation.
+        delete require.cache[require.resolve('../../src/services/whatsappService')];
+        WhatsAppService = require('../../src/services/whatsappService');
+
+        // Activate fake timers first, then clear state
         jest.useFakeTimers();
+        jest.clearAllMocks();
+        jest.clearAllTimers();
 
-        // Create mocks
-        mockLogger = {
-            info: jest.fn(),
-            error: jest.fn(),
-            warn: jest.fn()
-        };
+        // Set up logger spies
+        spyOn(logger, 'info').mockImplementation(() => {});
+        spyOn(logger, 'error').mockImplementation(() => {});
+        spyOn(logger, 'warn').mockImplementation(() => {});
 
-        mockConfig = {
-            getConfig: jest.fn(() => ({ yourPhoneNumber: '+1234567890' }))
-        };
+        // Restore default implementations after clearAllMocks
+        mockConfig.getConfig.mockReturnValue({ yourPhoneNumber: '+1234567890' });
+        mockAI.generateTestMessage.mockResolvedValue('Test message');
+        mockClient.initialize.mockResolvedValue(undefined);
+        mockClient.getChatById.mockResolvedValue({
+            id: { user: 'test' },
+            sendMessage: jest.fn().mockResolvedValue({ id: 'msg123' })
+        });
+        mockClient.listenerCount.mockReturnValue(1);
 
-        mockAI = {
-            generateTestMessage: jest.fn().mockResolvedValue('Test message')
-        };
-
-        mockQRCode = {
-            generate: jest.fn()
-        };
-
-        // Create mock client with event handling
-        mockClient = {
-            initialize: jest.fn().mockResolvedValue(undefined),
-            getChatById: jest.fn().mockResolvedValue({
-                id: { user: 'test' },
-                sendMessage: jest.fn().mockResolvedValue({ id: 'msg123' })
-            }),
-            destroy: jest.fn(),
-            on: jest.fn(),
-            listenerCount: jest.fn(() => 1),
-            
-            // Event simulation
-            _listeners: {},
-            _addListener: function(event, callback) {
-                if (!this._listeners[event]) this._listeners[event] = [];
-                this._listeners[event].push(callback);
-            },
-            _emit: function(event, ...args) {
-                if (this._listeners[event]) {
-                    this._listeners[event].forEach(callback => callback(...args));
-                }
-            }
-        };
-
-        // Setup event tracking
+        // Reset client event listeners and re-establish tracking
+        mockClient._listeners = {};
         mockClient.on.mockImplementation((event, callback) => {
             mockClient._addListener(event, callback);
         });
 
-        // Mock modules
-        jest.doMock('whatsapp-web.js', () => ({
-            Client: jest.fn(() => mockClient),
-            LocalAuth: jest.fn(() => ({ clientId: 'birthday-bot' })),
-            MessageMedia: {
-                fromFilePath: jest.fn().mockReturnValue({ mimetype: 'image/jpeg', data: 'base64data' })
-            }
-        }));
-
-        jest.doMock('qrcode-terminal', () => mockQRCode);
-        jest.doMock('../../src/utils/logger', () => mockLogger);
-        jest.doMock('../../src/config/configManager', () => mockConfig);
-        jest.doMock('../../src/services/aiMessageService', () => mockAI);
-
-        // Require the service
-        WhatsAppService = require('../../src/services/whatsappService');
+        // Reset service state and re-initialize to register fresh event handlers
+        WhatsAppService.isReady = false;
+        WhatsAppService.initializeClient();
     });
 
     afterEach(() => {
+        mock.restore();
         jest.useRealTimers();
     });
 
@@ -102,7 +119,7 @@ describe('WhatsAppService', () => {
             await WhatsAppService.initialize();
 
             expect(mockClient.initialize).toHaveBeenCalled();
-            expect(mockLogger.info).toHaveBeenCalledWith('Initializing WhatsApp client...');
+            expect(logger.info).toHaveBeenCalledWith('Initializing WhatsApp client...');
         });
 
         test('should handle initialization errors', async () => {
@@ -110,7 +127,7 @@ describe('WhatsAppService', () => {
             mockClient.initialize.mockRejectedValueOnce(error);
 
             await expect(WhatsAppService.initialize()).rejects.toThrow('Init failed');
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to initialize WhatsApp client', error);
+            expect(logger.error).toHaveBeenCalledWith('Failed to initialize WhatsApp client', error);
         });
     });
 
@@ -120,7 +137,7 @@ describe('WhatsAppService', () => {
             
             mockClient._emit('qr', testQR);
 
-            expect(mockLogger.info).toHaveBeenCalledWith('QR Code received, scan with your WhatsApp:');
+            expect(logger.info).toHaveBeenCalledWith('QR Code received, scan with your WhatsApp:');
             expect(mockQRCode.generate).toHaveBeenCalledWith(testQR, { small: true });
         });
 
@@ -128,13 +145,13 @@ describe('WhatsAppService', () => {
             mockClient._emit('ready');
 
             expect(WhatsAppService.isReady).toBe(true);
-            expect(mockLogger.info).toHaveBeenCalledWith('WhatsApp Birthday Bot is ready!');
+            expect(logger.info).toHaveBeenCalledWith('WhatsApp Birthday Bot is ready!');
         });
 
         test('should handle authentication failure', () => {
             mockClient._emit('auth_failure', 'Auth failed');
 
-            expect(mockLogger.error).toHaveBeenCalledWith('Authentication failure', expect.any(Error));
+            expect(logger.error).toHaveBeenCalledWith('Authentication failure', expect.any(Error));
         });
 
         test('should handle disconnection', () => {
@@ -144,7 +161,7 @@ describe('WhatsAppService', () => {
             mockClient._emit('disconnected', 'logout');
 
             expect(WhatsAppService.isReady).toBe(false);
-            expect(mockLogger.info).toHaveBeenCalledWith('Client was logged out: logout');
+            expect(logger.info).toHaveBeenCalledWith('Client was logged out: logout');
             expect(mockClient.destroy).toHaveBeenCalled();
             
             jest.advanceTimersByTime(1000);
@@ -155,7 +172,7 @@ describe('WhatsAppService', () => {
 
         test('should handle change_state event', () => {
             mockClient._emit('change_state', 'OPENING');
-            expect(mockLogger.info).toHaveBeenCalledWith('Connection state changed to: OPENING');
+            expect(logger.info).toHaveBeenCalledWith('Connection state changed to: OPENING');
         });
 
         test('should handle client errors', () => {
@@ -163,7 +180,7 @@ describe('WhatsAppService', () => {
             
             mockClient._emit('error', error);
 
-            expect(mockLogger.error).toHaveBeenCalledWith('Client error occurred', error);
+            expect(logger.error).toHaveBeenCalledWith('Client error occurred', error);
         });
 
         test('should handle Puppeteer evaluation errors with restart', () => {
@@ -172,7 +189,7 @@ describe('WhatsAppService', () => {
             
             mockClient._emit('error', error);
 
-            expect(mockLogger.info).toHaveBeenCalledWith('Puppeteer evaluation error detected. Trying to restart...');
+            expect(logger.info).toHaveBeenCalledWith('Puppeteer evaluation error detected. Trying to restart...');
             
             jest.advanceTimersByTime(2000);
             expect(mockExit).toHaveBeenCalledWith(1);
@@ -235,7 +252,7 @@ describe('WhatsAppService', () => {
             const result = await WhatsAppService.sendMessage('+1234567890', 'test message');
 
             expect(result).toBe(true);
-            expect(mockLogger.info).toHaveBeenCalledWith('Message sent successfully to +1234567890');
+            expect(logger.info).toHaveBeenCalledWith('Message sent successfully to +1234567890');
         });
 
         test('should throw error when not ready', async () => {
@@ -254,7 +271,7 @@ describe('WhatsAppService', () => {
             await expect(WhatsAppService.sendMessage('+1234567890', 'test'))
                 .rejects.toThrow('Send failed');
 
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to send message to +1234567890', expect.any(Error));
+            expect(logger.error).toHaveBeenCalledWith('Failed to send message to +1234567890', expect.any(Error));
         });
     });
 
@@ -270,7 +287,7 @@ describe('WhatsAppService', () => {
             const result = await WhatsAppService.sendImage(phoneNumber, imagePath);
 
             expect(result).toBe(true);
-            expect(mockLogger.info).toHaveBeenCalledWith(`Image sent successfully to ${phoneNumber}`);
+            expect(logger.info).toHaveBeenCalledWith(`Image sent successfully to ${phoneNumber}`);
         });
 
         test('should throw error when not ready', async () => {
@@ -288,7 +305,7 @@ describe('WhatsAppService', () => {
 
             await expect(WhatsAppService.sendImage('+123', 'path.jpg'))
                 .rejects.toThrow('Send failed');
-            expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Failed to send image'), error);
+            expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Failed to send image'), error);
         });
     });
 
@@ -314,7 +331,7 @@ describe('WhatsAppService', () => {
             
             jest.advanceTimersByTime(5000);
             
-            expect(mockLogger.info).toHaveBeenCalledWith('Client not ready yet, skipping test message');
+            expect(logger.info).toHaveBeenCalledWith('Client not ready yet, skipping test message');
             expect(mockAI.generateTestMessage).not.toHaveBeenCalled();
         });
 
@@ -331,7 +348,7 @@ describe('WhatsAppService', () => {
             await Promise.resolve();
             await Promise.resolve();
             
-            expect(mockLogger.error).toHaveBeenCalledWith('Failed to send test message', error);
+            expect(logger.error).toHaveBeenCalledWith('Failed to send test message', error);
         });
 
         test('should warn when phone number not configured', () => {
@@ -339,7 +356,7 @@ describe('WhatsAppService', () => {
 
             WhatsAppService.sendTestMessage();
 
-            expect(mockLogger.warn).toHaveBeenCalledWith('Cannot send test message - yourPhoneNumber not configured');
+            expect(logger.warn).toHaveBeenCalledWith('Cannot send test message - yourPhoneNumber not configured');
         });
     });
 
